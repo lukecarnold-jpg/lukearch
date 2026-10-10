@@ -187,6 +187,13 @@ DRM device, so the live session runs on X11 (Xorg with the framebuffer driver)
 rather than Wayland.
 The VirtualBox VM setup has been checked with `VBoxManage` 7.2.20.
 
+The ARM64 ISO is a hybrid image with an EFI system partition, so it also boots
+as a disk. Convert it to a VirtualBox disk with
+`VBoxManage convertfromraw <iso> <vdi> --format VDI`, attach the disk to a VM
+with the settings above, and export the VM as an OVA. An OVA holds the disk and
+VM settings, not the ISO file. Changes made in the live session are lost on
+reboot.
+
 ## Test in QEMU
 
 After building, run:
