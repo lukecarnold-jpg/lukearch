@@ -7,6 +7,23 @@ status.
 
 ## 2026-10-10
 
+### Repository structure guide
+
+- Added `STRUCTURE.md`, a visual map of the repository with Mermaid diagrams for
+  the profile-to-ISO flow, the build and test flow, and the sudo authentication
+  model, plus an annotated file tree.
+- Linked `STRUCTURE.md` from the README repository layout.
+
+### ARM64 boot mode fix
+
+- Changed the ARM64 profile boot mode from `uefi-aa64.systemd-boot.esp` to
+  `uefi.systemd-boot`. The old name is not accepted by archiso 91, which
+  rejected the profile at validation. `uefi.systemd-boot` is the architecture-
+  neutral mode that archiso maps to AA64 on ARM64.
+- Verified by running `mkarchiso` for the aarch64 profile inside an ARM64 Arch
+  Linux container on Apple silicon. The validation step now passes; full ISO
+  build is pending.
+
 ### Separate administrator password for sudo
 
 - Changed sudo for `wheel` members to ask for a separate administrator password

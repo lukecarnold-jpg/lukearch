@@ -42,6 +42,7 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `profile/packages.x86_64` - generic input and baseline graphics packages
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
 - `DEV_HIST.md` - dated development history and validation notes
+- `STRUCTURE.md` - visual map of the repository, build flow, and auth model
 
 ## Development history
 
