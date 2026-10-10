@@ -22,4 +22,8 @@ file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
   ["/root/README"]="0:0:644"
+  ["/root/customize_airootfs.sh"]="0:0:755"
+  ["/etc/nftables.conf"]="0:0:644"
+  ["/etc/sddm.conf.d/autologin.conf"]="0:0:644"
+  ["/etc/sudoers.d/lukearch"]="0:0:440"
 )

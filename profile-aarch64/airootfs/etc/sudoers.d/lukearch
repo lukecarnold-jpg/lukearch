@@ -1,0 +1,3 @@
+Defaults:lukearch !targetpw
+%wheel ALL=(ALL:ALL) ALL
+lukearch ALL=(root) NOPASSWD: /usr/bin/passwd lukearch

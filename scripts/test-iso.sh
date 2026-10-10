@@ -37,7 +37,7 @@ if [[ "$HOST_ARCH" == "x86_64" && -e /dev/kvm && -w /dev/kvm ]]; then
   QEMU_ACCEL=("-accel" "kvm")
 fi
 
-MEMORY_MB="${MEMORY_MB:-2048}"
+MEMORY_MB="${MEMORY_MB:-4096}"
 CPUS="${CPUS:-2}"
 
 exec qemu-system-x86_64 \

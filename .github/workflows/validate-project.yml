@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate shell syntax
         run: |
@@ -20,6 +22,9 @@ jobs:
           bash -n scripts/build-iso.sh
           bash -n scripts/test-iso.sh
           bash -n profile/profiledef.sh
+          bash -n profile-aarch64/profiledef.sh
+          bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
+          bash -n scripts/test-virtualbox.sh
 
       - name: Validate required files exist
         run: |
@@ -27,14 +32,26 @@ jobs:
           required=(
             profile/profiledef.sh
             profile/packages.x86_64
+            profile-aarch64/profiledef.sh
+            profile-aarch64/packages.aarch64
+            profile-aarch64/pacman.conf
+            profile-aarch64/efiboot/loader/loader.conf
+            profile-aarch64/efiboot/loader/entries/lukearch-aarch64.conf
             profile/pacman.conf
+            profile/airootfs/etc/systemd/zram-generator.conf
+            profile/airootfs/etc/nftables.conf
+            profile/airootfs/etc/sddm.conf.d/autologin.conf
+            profile/airootfs/etc/sudoers.d/lukearch
+            profile/airootfs/root/customize_airootfs.sh
             profile/airootfs/etc/os-release
             profile/airootfs/etc/hostname
             profile/airootfs/etc/motd
             docs/arm-support.md
             scripts/build-iso.sh
             scripts/test-iso.sh
+            scripts/test-virtualbox.sh
             README.md
+            DEV_HIST.md
             LICENSE
           )
 
@@ -44,3 +61,80 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Validate low-memory profile settings
+        run: |
+          set -euo pipefail
+          ! grep -qx 'archiso' profile/packages.x86_64
+          grep -qx 'zram-generator' profile/packages.x86_64
+          grep -qx 'libinput' profile/packages.x86_64
+          grep -qx 'xf86-input-libinput' profile/packages.x86_64
+          grep -qx 'mesa' profile/packages.x86_64
+          grep -qx 'plasma-desktop' profile/packages.x86_64
+          grep -qx 'sddm' profile/packages.x86_64
+          grep -qx 'nftables' profile/packages.x86_64
+          grep -qx 'sudo' profile/packages.x86_64
+          ! grep -qx 'openssh' profile/packages.x86_64
+          grep -q 'MEMORY_MB:-4096' scripts/test-iso.sh
+          grep -q 'useradd --create-home' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'usermod --append --groups wheel' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'passwd --lock lukearch' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'passwd --lock root' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'systemctl enable NetworkManager.service' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'systemctl enable nftables.service' profile/airootfs/root/customize_airootfs.sh
+          grep -q 'systemctl enable sddm.service' profile/airootfs/root/customize_airootfs.sh
+          grep -q '%wheel ALL=(ALL:ALL) ALL' profile/airootfs/etc/sudoers.d/lukearch
+          grep -q 'NOPASSWD: /usr/bin/passwd lukearch' profile/airootfs/etc/sudoers.d/lukearch
+          grep -q 'Security notes' README.md
+          grep -q 'Power-user administration' DEV_HIST.md
+          ! grep -Eq '^(nvidia|xf86-video-amdgpu|xf86-video-intel)$' profile/packages.x86_64
+          grep -q 'Hardware drivers' README.md
+
+      - name: Validate ARM64 VirtualBox profile
+        run: |
+          set -euo pipefail
+          grep -qx "arch='aarch64'" profile-aarch64/profiledef.sh
+          grep -qx 'linux-aarch64' profile-aarch64/packages.aarch64
+          grep -q 'uefi-aa64.systemd-boot.esp' profile-aarch64/profiledef.sh
+          grep -q 'ARCH:-x86_64' scripts/build-iso.sh
+          grep -q 'profile-aarch64' scripts/build-iso.sh
+          grep -q 'VirtualBox 7.2+' scripts/test-virtualbox.sh
+
+      - name: Require README and development history updates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base_sha="$BASE_SHA"
+            head_sha="$HEAD_SHA"
+          else
+            base_sha="$BEFORE_SHA"
+            head_sha="$CURRENT_SHA"
+          fi
+
+          if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "No prior revision is available; skipping documentation-change enforcement."
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          if [[ -z "$changed_files" ]]; then
+            echo "No files changed."
+            exit 0
+          fi
+
+          if ! grep -qx 'README.md' <<<"$changed_files"; then
+            echo "README.md must be updated with every repository change." >&2
+            exit 1
+          fi
+
+          if ! grep -qx 'DEV_HIST.md' <<<"$changed_files"; then
+            echo "DEV_HIST.md must be updated with every repository change." >&2
+            exit 1
+          fi

@@ -12,6 +12,15 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 
 - ✅ Initial x86_64 `archiso` profile scaffold is present under `/profile`.
 - ✅ Build and local QEMU test scripts are included under `/scripts`.
+- ✅ The live image provides a lightweight KDE Plasma desktop started by SDDM.
+- ✅ The live environment targets systems with 4 GB of RAM, with zram enabled
+  for additional memory headroom.
+- ✅ The live image uses a non-root desktop account with password-protected
+  sudo administration and default-deny inbound firewall rules.
+- ✅ Keyboard and mouse input use generic libinput drivers, while GPU-specific
+  drivers remain optional.
+- ✅ A separate ARM64 profile is available for native Apple M-series
+  virtualization.
 - ⚠️ Native ARM/aarch64 image support is **not implemented yet**.
 
 ## Repository layout
@@ -23,7 +32,21 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
   - `airootfs/` - files copied into live root filesystem
 - `scripts/build-iso.sh` - builds the x86_64 ISO with `mkarchiso`
 - `scripts/test-iso.sh` - boots an ISO in QEMU for local testing
+- `scripts/test-virtualbox.sh` - boots the ARM64 ISO in VirtualBox
+- `profile-aarch64/` - ARM64 archiso profile for Apple M-series testing
+- `profile/airootfs/root/customize_airootfs.sh` - enables KDE display and network services
+- `profile/airootfs/etc/nftables.conf` - default-deny inbound firewall policy
+- `profile/airootfs/etc/sddm.conf.d/autologin.conf` - locked live-session account
+- `profile/airootfs/etc/sudoers.d/lukearch` - password-protected power-user administration
+- `profile/packages.x86_64` - generic input and baseline graphics packages
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
+- `DEV_HIST.md` - dated development history and validation notes
+
+## Development history
+
+Every repository change must update both this file and
+[`DEV_HIST.md`](DEV_HIST.md). The CI workflow enforces this requirement for
+commits and pull requests.
 
 ## Build instructions (x86_64 host)
 
@@ -47,6 +70,67 @@ WORK_DIR="$PWD/work" OUT_DIR="$PWD/out" ./scripts/build-iso.sh
 
 `mkarchiso` requires root privileges; the script uses `sudo` automatically if needed.
 
+## Security notes
+
+The live image is designed to be safer by default on older hardware:
+
+- KDE starts as the unprivileged `lukearch` account. The account is initially
+  locked, so set its password from a terminal with `sudo passwd lukearch`.
+  After that, members of `wheel` can administer the device through sudo, with
+  a password required for normal administrative commands.
+- The root account is locked, SSH is not installed, and only NetworkManager,
+  SDDM, nftables, and the desktop session are enabled.
+- nftables blocks unsolicited inbound traffic while allowing established
+  connections, DHCP, and ICMP/ICMPv6 needed for normal networking.
+- The live filesystem is ephemeral. It is not a substitute for an installed,
+  encrypted system, and physical access to a running computer can still expose
+  the active session.
+
+For a persistent installation, enable automatic or regular security updates,
+use full-disk encryption where practical, and avoid reusing credentials from
+other systems.
+
+## Hardware drivers
+
+Lukearch uses generic `libinput` and `xf86-input-libinput` drivers for
+keyboards and mice, avoiding device-specific input drivers. `mesa` supplies
+the baseline open graphics userspace without locking the image to one GPU
+vendor.
+
+No vendor-specific GPU driver is bundled or blocked. On an installed system,
+power users can install the driver appropriate to their hardware, for example:
+
+```bash
+# AMD open drivers
+sudo pacman -S mesa vulkan-radeon
+
+# Intel open drivers
+sudo pacman -S mesa vulkan-intel
+
+# NVIDIA proprietary driver
+sudo pacman -S nvidia
+```
+
+The exact package depends on the GPU and kernel in use. These commands change
+the running live session only unless the system has a persistent installation;
+the live filesystem is discarded at reboot.
+
+## Apple silicon and VirtualBox
+
+Apple M1 and newer Macs require an ARM64 guest for native VirtualBox
+virtualization. Install VirtualBox 7.2 or newer. Build the ARM64 profile on an
+ARM64 Linux build host (for example, an ARM64 Linux VM or separate ARM64
+machine), then test it on the Mac with:
+
+```bash
+ARCH=aarch64 ./scripts/build-iso.sh
+./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
+```
+
+The ARM64 profile uses standard UEFI and is intended for VirtualBox ARM64
+guests. The existing x86_64 profile remains the image for Intel and AMD PCs.
+VirtualBox on Apple silicon cannot natively run the x86_64 Lukearch ISO.
+
 ## Test in QEMU
 
 After building, run:
@@ -60,6 +144,19 @@ Or provide an explicit ISO path:
 ```bash
 ./scripts/test-iso.sh /absolute/path/to/lukearch.iso
 ```
+
+The test boots the KDE Plasma live path with 4096 MB of guest RAM by default.
+This is the supported low-memory path: it does not copy the compressed
+filesystem into RAM, and the live system enables a zram swap device sized to
+half of detected RAM. Override the test size when needed:
+
+```bash
+MEMORY_MB=4096 ./scripts/test-iso.sh
+```
+
+Avoid selecting the `copytoram` boot entry on a 4 GB system unless the ISO is
+small enough to leave room for KDE Plasma and running applications; that mode
+intentionally uses additional RAM for the complete live filesystem.
 
 On non-x86_64 hosts, this script runs x86_64 emulation and prints a reminder that it does not validate native ARM boot support.
 

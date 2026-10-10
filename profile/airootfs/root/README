@@ -5,5 +5,15 @@ This live root filesystem is generated from the lukearch archiso profile.
 
 Important:
 - Lukearch is Arch-based and unofficial.
-- No insecure default user accounts or static passwords are configured here.
+- The live image starts the KDE Plasma desktop through SDDM.
+- The desktop session uses a locked local account with sudo available to the
+  `wheel` group after the user sets a password.
+- Run `sudo passwd lukearch` once to set the desktop account password; normal
+  sudo commands then require that password.
+- Keyboard and mouse input use generic libinput drivers. No GPU-specific
+  driver is forced into the image; install the driver matching the hardware
+  with pacman when a persistent system is available.
+- Inbound network traffic is blocked by default; SSH is not installed.
+- This is an ephemeral live image. Do not store sensitive data in the live
+  session, and install security updates promptly on a persistent system.
 - ARM/Apple silicon support is tracked in docs/arm-support.md in the repository.

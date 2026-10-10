@@ -1,0 +1,9 @@
+Lukearch ARM64 live environment marker
+======================================
+
+This live root filesystem is generated from the lukearch aarch64 archiso
+profile for standard ARM64 UEFI virtual machines, including VirtualBox 7.2+
+on Apple M-series Macs.
+
+Run `sudo passwd lukearch` once to set the desktop account password. Generic
+libinput input drivers and optional GPU driver installation are supported.
