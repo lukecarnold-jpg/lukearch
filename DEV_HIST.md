@@ -7,11 +7,24 @@ status.
 
 ## 2026-10-10
 
+### Build filesystem note
+
+- Documented that builds must run on a case-sensitive filesystem. The ARM64
+  build failed on a case-insensitive macOS mount because `xorg-server` ships
+  paths that differ only by case. Confirmed by moving the work directory into
+  the container, after which package installation completed.
+
 ### Repository structure guide
 
 - Added `STRUCTURE.md`, a visual map of the repository with Mermaid diagrams for
   the profile-to-ISO flow, the build and test flow, and the sudo authentication
-  model, plus an annotated file tree.
+  model, plus a key-directories table.
+- Added `scripts/update-structure.sh`, which regenerates the file tree in
+  `STRUCTURE.md` from tracked files in the C locale so output is the same on
+  every host.
+- CI regenerates the tree and fails if `STRUCTURE.md` is out of date, so the
+  tree stays current when files are added, moved, or removed. Diagrams and the
+  key-directories table are still edited by hand.
 - Linked `STRUCTURE.md` from the README repository layout.
 
 ### ARM64 boot mode fix

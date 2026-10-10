@@ -5,6 +5,14 @@ parts connect, and how a change moves from source to a tested ISO. It
 describes the current tree. [`README.md`](README.md) covers build and usage
 steps, and [`DEV_HIST.md`](DEV_HIST.md) records changes over time.
 
+**Keeping this page current:**
+
+- The file tree below is generated from tracked files by
+  `scripts/update-structure.sh`. Run it after adding, moving, or removing
+  files. CI fails if the tree is out of date.
+- The diagrams and the key-directories table are edited by hand. Update them
+  when a component, flow, or responsibility changes.
+
 ## Overview
 
 Two archiso profiles live in this repository. One build script selects a
@@ -42,40 +50,97 @@ flowchart LR
 
 ## Repository tree
 
+<!-- tree:start -->
 ```text
-lukearch/
-├── .github/
-│   └── workflows/
-│       └── validate-project.yml     CI checks on every push and pull request
-├── docs/
-│   └── arm-support.md               ARM and Apple silicon status and roadmap
-├── profile/                         x86_64 archiso profile (Intel and AMD PCs)
-│   ├── profiledef.sh                build metadata, boot modes, file permissions
-│   ├── packages.x86_64              live environment package list
-│   ├── pacman.conf                  repositories for the x86_64 build
-│   ├── efiboot/loader/              systemd-boot config and boot entries (UEFI)
-│   ├── syslinux/syslinux.cfg        BIOS boot menu
-│   └── airootfs/                    files copied into the live root filesystem
-│       ├── etc/                     hostname, os-release, motd, nftables,
-│       │                            SDDM autologin, sudoers, zram
-│       ├── root/                    customize script and live README
-│       └── usr/local/sbin/          lukearch-set-admin-password
-├── profile-aarch64/                 ARM64 archiso profile (VirtualBox on Apple silicon)
-│   ├── profiledef.sh                build metadata, boot mode, file permissions
-│   ├── packages.aarch64             live environment package list
-│   ├── pacman.conf                  Arch Linux ARM repositories
-│   ├── efiboot/loader/              systemd-boot config and boot entry (UEFI)
-│   └── airootfs/                    same role as the x86_64 airootfs
-├── scripts/
-│   ├── build-iso.sh                 builds an ISO with mkarchiso (ARCH selects profile)
-│   ├── test-iso.sh                  boots an x86_64 ISO in QEMU
-│   └── test-virtualbox.sh           creates and starts an ARM64 VirtualBox VM
-├── DEV_HIST.md                      dated development history
-├── README.md                        overview, build, test, and security notes
-├── STRUCTURE.md                     this file
-├── LICENSE
-└── .gitignore                       ignores work/, out/, and *.iso
+.github/
+  workflows/
+    validate-project.yml
+.gitignore
+DEV_HIST.md
+LICENSE
+README.md
+STRUCTURE.md
+docs/
+  arm-support.md
+profile-aarch64/
+  airootfs/
+    etc/
+      nftables.conf
+      sddm.conf.d/
+        autologin.conf
+      sudoers.d/
+        lukearch
+      systemd/
+        zram-generator.conf
+    root/
+      README
+      customize_airootfs.sh
+    usr/
+      local/
+        sbin/
+          lukearch-set-admin-password
+  efiboot/
+    loader/
+      entries/
+        lukearch-aarch64.conf
+      loader.conf
+  packages.aarch64
+  pacman.conf
+  profiledef.sh
+profile/
+  airootfs/
+    etc/
+      hostname
+      motd
+      nftables.conf
+      os-release
+      sddm.conf.d/
+        autologin.conf
+      sudoers.d/
+        lukearch
+      systemd/
+        system/
+          multi-user.target.wants/
+            NetworkManager.service
+        zram-generator.conf
+    root/
+      README
+      customize_airootfs.sh
+    usr/
+      local/
+        sbin/
+          lukearch-set-admin-password
+  efiboot/
+    loader/
+      entries/
+        lukearch-x86_64-copytoram.conf
+        lukearch-x86_64.conf
+      loader.conf
+  packages.x86_64
+  pacman.conf
+  profiledef.sh
+  syslinux/
+    syslinux.cfg
+scripts/
+  build-iso.sh
+  test-iso.sh
+  test-virtualbox.sh
+  update-structure.sh
 ```
+<!-- tree:end -->
+
+## Key directories
+
+| Path | Purpose |
+| --- | --- |
+| `profile/` | x86_64 archiso profile for Intel and AMD PCs |
+| `profile/airootfs/` | Files copied into the x86_64 live root filesystem |
+| `profile/efiboot/` and `profile/syslinux/` | UEFI (systemd-boot) and BIOS (syslinux) boot configuration |
+| `profile-aarch64/` | ARM64 archiso profile for VirtualBox on Apple silicon |
+| `profile-aarch64/airootfs/` | Files copied into the ARM64 live root filesystem |
+| `scripts/` | Build, QEMU test, VirtualBox test, and structure generator scripts |
+| `docs/` | Supporting documentation (ARM and Apple silicon status) |
+| `.github/workflows/` | CI validation |
 
 ## Build and test flow
 

@@ -25,6 +25,7 @@ jobs:
           bash -n profile-aarch64/profiledef.sh
           bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
           bash -n scripts/test-virtualbox.sh
+          bash -n scripts/update-structure.sh
 
       - name: Validate required files exist
         run: |
@@ -50,6 +51,8 @@ jobs:
             profile/airootfs/etc/hostname
             profile/airootfs/etc/motd
             docs/arm-support.md
+            STRUCTURE.md
+            scripts/update-structure.sh
             scripts/build-iso.sh
             scripts/test-iso.sh
             scripts/test-virtualbox.sh
@@ -114,6 +117,15 @@ jobs:
           grep -q -- '--platform-architecture arm' scripts/test-virtualbox.sh
           grep -q 'armv8virtual' scripts/test-virtualbox.sh
           ! grep -q 'ArchLinux_64' scripts/test-virtualbox.sh
+
+      - name: Check STRUCTURE.md tree is current
+        run: |
+          set -euo pipefail
+          bash scripts/update-structure.sh
+          if ! git diff --exit-code -- STRUCTURE.md; then
+            echo "STRUCTURE.md tree is out of date. Run scripts/update-structure.sh and commit the result." >&2
+            exit 1
+          fi
 
       - name: Require README and development history updates
         env:

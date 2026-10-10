@@ -43,6 +43,7 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
 - `DEV_HIST.md` - dated development history and validation notes
 - `STRUCTURE.md` - visual map of the repository, build flow, and auth model
+- `scripts/update-structure.sh` - regenerates the file tree in `STRUCTURE.md`; CI fails if it is stale
 
 ## Development history
 
@@ -71,6 +72,12 @@ WORK_DIR="$PWD/work" OUT_DIR="$PWD/out" ./scripts/build-iso.sh
 ```
 
 `mkarchiso` requires root privileges; the script uses `sudo` automatically if needed.
+
+Build on a case-sensitive filesystem. Packages such as `xorg-server` ship
+paths that differ only by case (for example `usr/lib/Xorg.wrap` and
+`usr/lib/xorg/`). On macOS's default case-insensitive APFS volume, or any
+case-insensitive mount, the build fails with "not overwriting dir with file".
+Use a Linux filesystem or a case-sensitive volume for `WORK_DIR`.
 
 ## Security notes
 
