@@ -8,8 +8,12 @@ Important:
 - The live image starts the KDE Plasma desktop through SDDM.
 - The desktop session uses a locked local account with sudo available to the
   `wheel` group after the user sets a password.
-- Run `sudo passwd lukearch` once to set the desktop account password; normal
-  sudo commands then require that password.
+- Run `sudo passwd lukearch` once to set the desktop account password. This
+  password is for logging in again; it does not authorize sudo.
+- Run `sudo lukearch-set-admin-password` once to set the separate administrator
+  password. It asks for the desktop account password first, then sets the root
+  password. After that, sudo asks for the administrator password, and the
+  command refuses to run again.
 - Keyboard and mouse input use generic libinput drivers. No GPU-specific
   driver is forced into the image; install the driver matching the hardware
   with pacman when a persistent system is available.

@@ -7,6 +7,47 @@ status.
 
 ## 2026-10-10
 
+### Separate administrator password for sudo
+
+- Changed sudo for `wheel` members to ask for a separate administrator password
+  (the root password) instead of the `lukearch` login password, using
+  `Defaults:%wheel rootpw` in both x86_64 and ARM64 profiles.
+- Added `lukearch-set-admin-password`, a one-time setup command. It asks for the
+  login password once, then sets the root password. It refuses to run after root
+  has a password, so the login password cannot replace the administrator
+  password later. Its sudo exception is limited to that command.
+- Tested with real sudo 1.9 in an Arch Linux container: the login password is
+  rejected for sudo before and after setup; the administrator password works;
+  the setup command refuses to run a second time; `sudo passwd root` with the
+  login password is rejected; and the `sudo passwd lukearch` NOPASSWD rule still
+  works.
+- Consequence: the administrator password also allows `su` and root console
+  login, because the root account is now unlocked after setup.
+- Not yet tested: the same flow in a booted live image.
+
+### Project review: ARM64 VirtualBox fix and documentation accuracy
+
+- Checked the ARM64 VirtualBox smoke-test script against the local `VBoxManage`
+  7.2.20 on an Apple silicon Mac. The previous `createvm` call created an x86
+  platform VM (`piix3` chipset, Arch Linux 64-bit ostype), which cannot boot the
+  aarch64 ISO.
+- Changed `scripts/test-virtualbox.sh` to create the VM with
+  `--platform-architecture arm`, set `--chipset armv8virtual`, and drop the x86
+  `ArchLinux_64` ostype. The script now refuses to run on non-ARM64 hosts.
+- Confirmed on temporary probe VMs (deleted afterward) that the ARM platform
+  accepts `armv8virtual`, UEFI firmware, memory and CPU settings, and IDE, SATA,
+  and NVMe storage controllers. Boot of the ARM64 ISO is not yet validated.
+- Added CI guards that fail if the VirtualBox script regresses to the x86
+  platform or the `ArchLinux_64` ostype.
+- Corrected the README note on the `lukearch` sudoers rule. `sudo passwd
+  lukearch` runs without a password for the life of the image, not only on first
+  run. Behavior is unchanged.
+- Clarified in the README which host runs each ARM64 build and test step, and
+  that the VM setup has been checked with `VBoxManage` while ARM64 boot has not.
+- Open items: the x86_64 and ARM64 ISO builds have not been run in this review.
+  The x86_64 live initramfs may need the archiso mkinitcpio hook package to boot.
+  This is unverified and was not changed.
+
 ### ARM64 and Apple silicon VirtualBox testing
 
 - Added a separate `profile-aarch64/` using ARM64 UEFI boot configuration and

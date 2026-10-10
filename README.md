@@ -37,7 +37,8 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `profile/airootfs/root/customize_airootfs.sh` - enables KDE display and network services
 - `profile/airootfs/etc/nftables.conf` - default-deny inbound firewall policy
 - `profile/airootfs/etc/sddm.conf.d/autologin.conf` - locked live-session account
-- `profile/airootfs/etc/sudoers.d/lukearch` - password-protected power-user administration
+- `profile/airootfs/etc/sudoers.d/lukearch` - power-user sudo, which requires the separate administrator password
+- `profile/airootfs/usr/local/sbin/lukearch-set-admin-password` - one-time setup for the administrator password
 - `profile/packages.x86_64` - generic input and baseline graphics packages
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
 - `DEV_HIST.md` - dated development history and validation notes
@@ -76,10 +77,19 @@ The live image is designed to be safer by default on older hardware:
 
 - KDE starts as the unprivileged `lukearch` account. The account is initially
   locked, so set its password from a terminal with `sudo passwd lukearch`.
-  After that, members of `wheel` can administer the device through sudo, with
-  a password required for normal administrative commands.
-- The root account is locked, SSH is not installed, and only NetworkManager,
-  SDDM, nftables, and the desktop session are enabled.
+  That password is for logging in; it does not authorize sudo.
+- Members of `wheel`, including `lukearch`, administer the device through sudo.
+  Sudo asks for a separate administrator password, which is the root password.
+  Set it once with `sudo lukearch-set-admin-password`. That command asks for the
+  login password first, then refuses to run once the administrator password
+  exists, so the login password cannot replace it later.
+- The administrator password also works with `su` and root console login. The
+  root account stays locked until that one-time setup runs.
+- The one exception is `sudo passwd lukearch`, which `lukearch` can run without
+  a password. The sudoers rule is not limited to first run; it only lets the
+  account change its own login password.
+- SSH is not installed, and only NetworkManager, SDDM, nftables, and the desktop
+  session are enabled.
 - nftables blocks unsolicited inbound traffic while allowing established
   connections, DHCP, and ICMP/ICMPv6 needed for normal networking.
 - The live filesystem is ephemeral. It is not a substitute for an installed,
@@ -118,18 +128,32 @@ the live filesystem is discarded at reboot.
 ## Apple silicon and VirtualBox
 
 Apple M1 and newer Macs require an ARM64 guest for native VirtualBox
-virtualization. Install VirtualBox 7.2 or newer. Build the ARM64 profile on an
-ARM64 Linux build host (for example, an ARM64 Linux VM or separate ARM64
-machine), then test it on the Mac with:
+virtualization. Install VirtualBox 7.2 or newer.
 
-```bash
-ARCH=aarch64 ./scripts/build-iso.sh
-./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
-```
+1. On an ARM64 Linux build host (for example, an ARM64 Linux VM or separate
+   ARM64 machine), build the ARM64 profile:
+
+   ```bash
+   ARCH=aarch64 ./scripts/build-iso.sh
+   ```
+
+2. Copy the resulting `lukearch-aarch64*.iso` to the Mac.
+3. On the Mac, create and start the test VM:
+
+   ```bash
+   ./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
+   ```
+
+The test script creates an ARM platform VM with the `armv8virtual` chipset and
+UEFI firmware. It refuses to run on non-ARM64 hosts. It replaces any existing VM
+named `Lukearch ARM64`, which is the default `VM_NAME`; override `VM_NAME` to keep
+an existing VM.
 
 The ARM64 profile uses standard UEFI and is intended for VirtualBox ARM64
 guests. The existing x86_64 profile remains the image for Intel and AMD PCs.
 VirtualBox on Apple silicon cannot natively run the x86_64 Lukearch ISO.
+The VirtualBox VM setup has been checked with `VBoxManage` 7.2.20, but a boot of
+the ARM64 ISO has not been validated yet.
 
 ## Test in QEMU
 
