@@ -20,6 +20,13 @@ status.
 - Added a CI check for the USB pointer setting. The check uses a plain pattern,
   because the first version left the CI run without any steps.
 
+### CI tree check fixed
+
+- A macOS `.DS_Store` file had been committed in the USB pointer change. It is
+  removed and ignored. The regenerated `STRUCTURE.md` tree is now current, so
+  the tree check passes.
+- The CI runs were starting again after the workflow was re-enabled.
+
 ### Push check documented
 
 - Added a README note that the documentation check compares each push on its
