@@ -806,7 +806,9 @@ choose_disk() {
     return 0
   fi
   choice="$(ui_menu "$DISK" "Disk to erase" "Everything on the chosen disk will be deleted." "${items[@]}")" || return 0
-  apply_field DISK "$choice" && apply_field INSTALL_MODE "wipe" || true
+  if apply_field DISK "$choice"; then
+    apply_field INSTALL_MODE "wipe" || true
+  fi
 }
 
 choose_partitions() {
@@ -823,7 +825,9 @@ choose_partitions() {
   fi
   esp="$(ui_menu "$ESP_PART" "EFI partition" "Choose the existing FAT32 EFI partition. It is kept and not formatted." "${items[@]}")" || return 0
   root="$(ui_menu "$ROOT_PART" "Root partition" "Choose the partition to install onto. It will be formatted and its data deleted." "${items[@]}")" || return 0
-  apply_field ESP_PART "$esp" && apply_field ROOT_PART "$root" && apply_field INSTALL_MODE "existing" || true
+  if apply_field ESP_PART "$esp" && apply_field ROOT_PART "$root"; then
+    apply_field INSTALL_MODE "existing" || true
+  fi
 }
 
 pick_field() { # field title text tag description...
