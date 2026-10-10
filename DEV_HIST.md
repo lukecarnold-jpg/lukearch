@@ -7,6 +7,11 @@ status.
 
 ## 2026-10-10
 
+### Push check documented
+
+- Added a README note that the documentation check compares each push on its
+  own, so each push must include both README.md and DEV_HIST.md.
+
 ### README documents ARM64 disk boot and OVA export
 
 - Added the steps to README: the ARM64 ISO is a hybrid image, so it can be

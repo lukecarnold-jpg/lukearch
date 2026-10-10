@@ -50,6 +50,7 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 Every repository change must update both this file and
 [`DEV_HIST.md`](DEV_HIST.md). The CI workflow enforces this requirement for
 commits and pull requests.
+Each push must include both files, because the check compares each push on its own.
 
 ## Build instructions (x86_64 host)
 
