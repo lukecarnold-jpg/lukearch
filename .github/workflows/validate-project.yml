@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           grep -qx "arch='aarch64'" profile-aarch64/profiledef.sh
           grep -qx 'linux-aarch64' profile-aarch64/packages.aarch64
-          grep -q 'uefi-aa64.systemd-boot.esp' profile-aarch64/profiledef.sh
+          grep -qx "bootmodes=('uefi.systemd-boot')" profile-aarch64/profiledef.sh
           grep -q 'ARCH:-x86_64' scripts/build-iso.sh
           grep -q 'profile-aarch64' scripts/build-iso.sh
           grep -q 'VirtualBox 7.2+' scripts/test-virtualbox.sh

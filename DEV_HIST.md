@@ -7,6 +7,12 @@ status.
 
 ## 2026-10-10
 
+### CI check matches the current ARM64 boot mode
+
+- The ARM64 CI check still looked for `uefi-aa64.systemd-boot.esp`, the boot mode
+  replaced earlier with `uefi.systemd-boot`. The check now looks for the current
+  name, so the validation job passes again.
+
 ### x86_64 builds and boots; live feature set added
 
 - Built the x86_64 ISO for the first time, in an emulated Arch container on the
