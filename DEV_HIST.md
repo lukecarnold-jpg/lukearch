@@ -37,6 +37,12 @@ status.
 - CI: lints the installer with shellcheck, checks that both copies match, and
   checks the required files, package lists, and key installer features.
 
+### Installer CI fix
+
+- CI's shellcheck flagged `A && B || C` constructs in the installer's menu
+  handlers. Rewrote them as `if` blocks; behavior is unchanged.
+- README now notes the installer lint and the profile-copy check.
+
 ### Installer test on ARM64
 
 - Ran the installer on the ARM64 builder VM against a blank 24 GB disk with the

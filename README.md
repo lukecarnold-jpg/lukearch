@@ -57,6 +57,7 @@ Every repository change must update both this file and
 [`DEV_HIST.md`](DEV_HIST.md). macOS `.DS_Store` files are ignored. The CI workflow enforces this requirement for
 commits and pull requests.
 Each push must include both files, because the check compares each push on its own.
+CI also lints `lukearch-install` with shellcheck and checks that both profile copies match.
 
 ## Build instructions (x86_64 host)
 
