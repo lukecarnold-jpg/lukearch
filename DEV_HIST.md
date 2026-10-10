@@ -17,7 +17,8 @@ status.
   keyboard, and Xorg registers the tablet as a pointer.
 - Not verified: pointer movement in the VirtualBox GUI window. Headless
   `controlvm` input did not reach the guest, so this needs a GUI check on the Mac.
-- Added a CI check for the USB pointer setting.
+- Added a CI check for the USB pointer setting. The check uses a plain pattern,
+  because the first version left the CI run without any steps.
 
 ### Push check documented
 
