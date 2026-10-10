@@ -7,6 +7,31 @@ status.
 
 ## 2026-10-10
 
+### ARM64 ISO builds and boots in VirtualBox
+
+- Built the ARM64 ISO inside an Arch Linux ARM VM running in VirtualBox on the
+  M4 Pro Mac, using a real ext4 root filesystem. Docker's container overlay
+  caused mkinitcpio's autodetect to fail.
+- Fixed the ARM64 profile so the ISO boots:
+  - `mkinitcpio-archiso` is in the package list, with a matching
+    `airootfs/etc/mkinitcpio.conf.d/archiso.conf`, so the initramfs includes the
+    archiso live-boot hooks.
+  - The boot entry points at `initramfs-linux.img`, the name the ALARM preset
+    produces.
+  - `customize_airootfs.sh` copies the kernel to `vmlinuz-linux-aarch64`, the
+    name archiso expects.
+  - The boot entry adds `systemd.firstboot=off`, so the live image skips the
+    timezone and locale wizard.
+- Verified in VirtualBox (ARM platform, armv8virtual chipset, UEFI): the ISO
+  boots through systemd-boot, the kernel, and systemd. NetworkManager comes up
+  with the NIC link active, and SDDM starts and reaches "Graphical Interface".
+- Not verified: the KDE desktop. The VirtualBox ARM console screenshots stop at
+  the last boot-log line, and keyboard input isn't accepted by this guest, so
+  login and the desktop couldn't be checked.
+- Build-only workarounds (not in the repo): pacman download timeouts disabled
+  in the build's copy of the profile; a bind mount on the chroot root for
+  mkinitcpio autodetect; `/dev/fd` links restored in the VM.
+
 ### Build filesystem note
 
 - Documented that builds must run on a case-sensitive filesystem. The ARM64

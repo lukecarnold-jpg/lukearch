@@ -160,8 +160,9 @@ an existing VM.
 The ARM64 profile uses standard UEFI and is intended for VirtualBox ARM64
 guests. The existing x86_64 profile remains the image for Intel and AMD PCs.
 VirtualBox on Apple silicon cannot natively run the x86_64 Lukearch ISO.
-The VirtualBox VM setup has been checked with `VBoxManage` 7.2.20, but a boot of
-the ARM64 ISO has not been validated yet.
+The ARM64 ISO builds inside an ARM64 Arch Linux ARM VM, and it boots through
+systemd to SDDM in VirtualBox. The KDE desktop login has not been verified yet.
+The VirtualBox VM setup has been checked with `VBoxManage` 7.2.20.
 
 ## Test in QEMU
 

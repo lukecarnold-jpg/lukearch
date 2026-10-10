@@ -2,6 +2,7 @@ base
 linux-aarch64
 linux-firmware
 mkinitcpio
+mkinitcpio-archiso
 zram-generator
 libinput
 mesa

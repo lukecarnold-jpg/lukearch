@@ -65,6 +65,8 @@ docs/
 profile-aarch64/
   airootfs/
     etc/
+      mkinitcpio.conf.d/
+        archiso.conf
       nftables.conf
       sddm.conf.d/
         autologin.conf
