@@ -7,9 +7,11 @@ zram-generator
 libinput
 mesa
 plasma-desktop
+plasma-x11-session
 plasma-nm
 plasma-pa
 sddm
+xf86-video-fbdev
 dolphin
 konsole
 xdg-user-dirs

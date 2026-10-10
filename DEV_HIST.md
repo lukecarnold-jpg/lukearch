@@ -7,6 +7,27 @@ status.
 
 ## 2026-10-10
 
+### ARM64 live image reaches the Plasma desktop in VirtualBox
+
+- Found why the desktop didn't start. VirtualBox's ARM guest exposes only an
+  EFI framebuffer (`/dev/fb0`), with no DRM device. The ALARM kernel doesn't
+  build `simpledrm`, so Wayland can't run. systemd-logind also reported the
+  seat as not graphical, so SDDM never started a display.
+- Changed the ARM64 profile:
+  - Added `plasma-x11-session` and `xf86-video-fbdev`, so the live session can
+    run on X11 over the framebuffer.
+  - Set the autologin session to `plasmax11`.
+  - Added `airootfs/etc/udev/rules.d/71-lukearch-framebuffer-seat.rules`, which
+    tags the framebuffer `master-of-seat` so logind reports the seat as
+    graphical.
+- Verified: the unchanged repo ISO boots, autologs into the `lukearch` session,
+  and shows the Plasma desktop in a VirtualBox screenshot.
+- Verification used a separate test-only ISO with SSH and nftables disabled.
+  It was built from a copy of the profile in a scratch directory, not the repo.
+  It confirmed `kwin_x11` and `plasmashell` running as `lukearch`.
+- Not verified: Wayland on hardware with a DRM driver, and any hardware beyond
+  this VirtualBox guest.
+
 ### ARM64 ISO builds and boots in VirtualBox
 
 - Built the ARM64 ISO inside an Arch Linux ARM VM running in VirtualBox on the

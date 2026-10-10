@@ -1,0 +1,2 @@
+# Mark the firmware framebuffer as a seat graphics device, so logind lets SDDM start on it when no DRM driver is present.
+SUBSYSTEM=="graphics", KERNEL=="fb[0-9]*", TAG+="master-of-seat"

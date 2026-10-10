@@ -74,6 +74,9 @@ profile-aarch64/
         lukearch
       systemd/
         zram-generator.conf
+      udev/
+        rules.d/
+          71-lukearch-framebuffer-seat.rules
     root/
       README
       customize_airootfs.sh
