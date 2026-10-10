@@ -1,0 +1,17 @@
+archiso
+base
+linux
+linux-firmware
+amd-ucode
+intel-ucode
+mkinitcpio
+networkmanager
+sudo
+vim
+nano
+less
+man-db
+man-pages
+git
+bash-completion
+openssh
