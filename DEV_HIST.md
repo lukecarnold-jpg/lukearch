@@ -7,6 +7,13 @@ status.
 
 ## 2026-10-10
 
+### README documents ARM64 disk boot and OVA export
+
+- Added the steps to README: the ARM64 ISO is a hybrid image, so it can be
+  converted to a VirtualBox disk and booted, then exported as an OVA. Verified:
+  the disk-boot VM reached the Plasma desktop, and the exported OVA imports with
+  the expected settings.
+
 ### CI check matches the current ARM64 boot mode
 
 - The ARM64 CI check still looked for `uefi-aa64.systemd-boot.esp`, the boot mode
