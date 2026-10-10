@@ -116,6 +116,7 @@ jobs:
           grep -q 'VirtualBox 7.2+' scripts/test-virtualbox.sh
           grep -q -- '--platform-architecture arm' scripts/test-virtualbox.sh
           grep -q 'armv8virtual' scripts/test-virtualbox.sh
+          grep -q 'usbtablet' scripts/test-virtualbox.sh
           ! grep -q 'ArchLinux_64' scripts/test-virtualbox.sh
 
       - name: Check STRUCTURE.md tree is current

@@ -30,7 +30,8 @@ fi
 
 # The ARM platform is required; the default x86 platform creates a piix3 VM that cannot boot the aarch64 ISO.
 VBoxManage createvm --name "$VM_NAME" --platform-architecture arm --register
-VBoxManage modifyvm "$VM_NAME" --chipset armv8virtual --firmware efi --memory "$MEMORY_MB" --cpus "$CPUS"
+# ARM guests have no PS/2 controller, so the pointer and keyboard must be USB devices.
+VBoxManage modifyvm "$VM_NAME" --chipset armv8virtual --firmware efi --memory "$MEMORY_MB" --cpus "$CPUS" --mouse usbtablet --keyboard usb --usb-xhci on
 VBoxManage storagectl "$VM_NAME" --name "IDE" --add ide
 VBoxManage storageattach "$VM_NAME" --storagectl "IDE" --port 0 --device 0 --type dvddrive --medium "$ISO_PATH"
 VBoxManage startvm "$VM_NAME" --type gui

@@ -48,7 +48,7 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 ## Development history
 
 Every repository change must update both this file and
-[`DEV_HIST.md`](DEV_HIST.md). The CI workflow enforces this requirement for
+[`DEV_HIST.md`](DEV_HIST.md). macOS `.DS_Store` files are ignored. The CI workflow enforces this requirement for
 commits and pull requests.
 Each push must include both files, because the check compares each push on its own.
 
@@ -175,7 +175,8 @@ virtualization. Install VirtualBox 7.2 or newer.
    ```
 
 The test script creates an ARM platform VM with the `armv8virtual` chipset and
-UEFI firmware. It refuses to run on non-ARM64 hosts. It replaces any existing VM
+UEFI firmware. It uses a USB tablet pointer and USB keyboard, because ARM guests
+have no PS/2 controller, so the mouse does not work with PS/2 settings. It refuses to run on non-ARM64 hosts. It replaces any existing VM
 named `Lukearch ARM64`, which is the default `VM_NAME`; override `VM_NAME` to keep
 an existing VM.
 
