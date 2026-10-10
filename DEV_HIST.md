@@ -7,6 +7,18 @@ status.
 
 ## 2026-10-10
 
+### ARM64 VirtualBox pointer and keyboard fixed
+
+- The ARM64 VM used PS/2 pointer and keyboard devices, which the ARM guest does
+  not have. The guest never received pointer input, so the mouse did not work.
+  The exported OVA carried the same settings.
+- Set `--mouse usbtablet --keyboard usb --usb-xhci on` in the test script and the
+  exported OVA. Verified: the guest detects a VirtualBox USB tablet and USB
+  keyboard, and Xorg registers the tablet as a pointer.
+- Not verified: pointer movement in the VirtualBox GUI window. Headless
+  `controlvm` input did not reach the guest, so this needs a GUI check on the Mac.
+- Added a CI check for the USB pointer setting.
+
 ### Push check documented
 
 - Added a README note that the documentation check compares each push on its
