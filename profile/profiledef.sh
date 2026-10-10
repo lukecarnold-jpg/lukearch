@@ -8,15 +8,13 @@ iso_version="$(date +%Y.%m.%d)"
 install_dir="arch"
 buildmodes=('iso')
 bootmodes=(
-  'bios.syslinux.mbr'
-  'bios.syslinux.eltorito'
-  'uefi-x64.systemd-boot.esp'
-  'uefi-x64.systemd-boot.eltorito'
+  'bios.syslinux'
+  'uefi.systemd-boot'
 )
 arch='x86_64'
 pacman_conf='pacman.conf'
 airootfs_image_type='squashfs'
-airootfs_image_tool_options=('comp' 'xz' '-Xbcj' 'x86')
+airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86')
 
 file_permissions=(
   ["/etc/shadow"]="0:0:400"
@@ -26,4 +24,5 @@ file_permissions=(
   ["/etc/nftables.conf"]="0:0:644"
   ["/etc/sddm.conf.d/autologin.conf"]="0:0:644"
   ["/etc/sudoers.d/lukearch"]="0:0:440"
+  ["/usr/local/sbin/lukearch-set-admin-password"]="0:0:755"
 )

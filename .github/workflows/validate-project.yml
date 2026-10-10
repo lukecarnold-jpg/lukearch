@@ -25,6 +25,7 @@ jobs:
           bash -n profile-aarch64/profiledef.sh
           bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
           bash -n scripts/test-virtualbox.sh
+          bash -n scripts/update-structure.sh
 
       - name: Validate required files exist
         run: |
@@ -42,11 +43,16 @@ jobs:
             profile/airootfs/etc/nftables.conf
             profile/airootfs/etc/sddm.conf.d/autologin.conf
             profile/airootfs/etc/sudoers.d/lukearch
+            profile/airootfs/usr/local/sbin/lukearch-set-admin-password
+            profile-aarch64/airootfs/etc/sudoers.d/lukearch
+            profile-aarch64/airootfs/usr/local/sbin/lukearch-set-admin-password
             profile/airootfs/root/customize_airootfs.sh
             profile/airootfs/etc/os-release
             profile/airootfs/etc/hostname
             profile/airootfs/etc/motd
             docs/arm-support.md
+            STRUCTURE.md
+            scripts/update-structure.sh
             scripts/build-iso.sh
             scripts/test-iso.sh
             scripts/test-virtualbox.sh
@@ -85,6 +91,15 @@ jobs:
           grep -q 'systemctl enable sddm.service' profile/airootfs/root/customize_airootfs.sh
           grep -q '%wheel ALL=(ALL:ALL) ALL' profile/airootfs/etc/sudoers.d/lukearch
           grep -q 'NOPASSWD: /usr/bin/passwd lukearch' profile/airootfs/etc/sudoers.d/lukearch
+          grep -qx 'Defaults:%wheel rootpw' profile/airootfs/etc/sudoers.d/lukearch
+          grep -qx 'Defaults!/usr/local/sbin/lukearch-set-admin-password !rootpw' profile/airootfs/etc/sudoers.d/lukearch
+          grep -qx '%wheel ALL=(root) /usr/local/sbin/lukearch-set-admin-password' profile/airootfs/etc/sudoers.d/lukearch
+          grep -q 'already set' profile/airootfs/usr/local/sbin/lukearch-set-admin-password
+          grep -q '"/usr/local/sbin/lukearch-set-admin-password"\]="0:0:755"' profile/profiledef.sh
+          grep -qx 'Defaults:%wheel rootpw' profile-aarch64/airootfs/etc/sudoers.d/lukearch
+          grep -qx 'Defaults!/usr/local/sbin/lukearch-set-admin-password !rootpw' profile-aarch64/airootfs/etc/sudoers.d/lukearch
+          grep -q 'already set' profile-aarch64/airootfs/usr/local/sbin/lukearch-set-admin-password
+          grep -q '"/usr/local/sbin/lukearch-set-admin-password"\]="0:0:755"' profile-aarch64/profiledef.sh
           grep -q 'Security notes' README.md
           grep -q 'Power-user administration' DEV_HIST.md
           ! grep -Eq '^(nvidia|xf86-video-amdgpu|xf86-video-intel)$' profile/packages.x86_64
@@ -95,10 +110,22 @@ jobs:
           set -euo pipefail
           grep -qx "arch='aarch64'" profile-aarch64/profiledef.sh
           grep -qx 'linux-aarch64' profile-aarch64/packages.aarch64
-          grep -q 'uefi-aa64.systemd-boot.esp' profile-aarch64/profiledef.sh
+          grep -qx "bootmodes=('uefi.systemd-boot')" profile-aarch64/profiledef.sh
           grep -q 'ARCH:-x86_64' scripts/build-iso.sh
           grep -q 'profile-aarch64' scripts/build-iso.sh
           grep -q 'VirtualBox 7.2+' scripts/test-virtualbox.sh
+          grep -q -- '--platform-architecture arm' scripts/test-virtualbox.sh
+          grep -q 'armv8virtual' scripts/test-virtualbox.sh
+          ! grep -q 'ArchLinux_64' scripts/test-virtualbox.sh
+
+      - name: Check STRUCTURE.md tree is current
+        run: |
+          set -euo pipefail
+          bash scripts/update-structure.sh
+          if ! git diff --exit-code -- STRUCTURE.md; then
+            echo "STRUCTURE.md tree is out of date. Run scripts/update-structure.sh and commit the result." >&2
+            exit 1
+          fi
 
       - name: Require README and development history updates
         env:

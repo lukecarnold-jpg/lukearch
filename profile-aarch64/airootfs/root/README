@@ -5,5 +5,13 @@ This live root filesystem is generated from the lukearch aarch64 archiso
 profile for standard ARM64 UEFI virtual machines, including VirtualBox 7.2+
 on Apple M-series Macs.
 
-Run `sudo passwd lukearch` once to set the desktop account password. Generic
-libinput input drivers and optional GPU driver installation are supported.
+Run `sudo passwd lukearch` once to set the desktop account password. This
+password is for logging in again; it does not authorize sudo.
+
+Run `sudo lukearch-set-admin-password` once to set the separate administrator
+password. It asks for the desktop account password first, then sets the root
+password. After that, sudo asks for the administrator password, and the command
+refuses to run again.
+
+Generic libinput input drivers and optional GPU driver installation are
+supported.

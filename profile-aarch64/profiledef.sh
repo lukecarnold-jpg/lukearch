@@ -7,7 +7,7 @@ iso_application="Lukearch ARM64 Live ISO (Arch Linux ARM-based, unofficial)"
 iso_version="$(date +%Y.%m.%d)"
 install_dir="arch"
 buildmodes=('iso')
-bootmodes=('uefi-aa64.systemd-boot.esp')
+bootmodes=('uefi.systemd-boot')
 arch='aarch64'
 pacman_conf='pacman.conf'
 airootfs_image_type='squashfs'
@@ -20,4 +20,5 @@ file_permissions=(
   ["/etc/nftables.conf"]="0:0:644"
   ["/etc/sddm.conf.d/autologin.conf"]="0:0:644"
   ["/etc/sudoers.d/lukearch"]="0:0:440"
+  ["/usr/local/sbin/lukearch-set-admin-password"]="0:0:755"
 )
