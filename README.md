@@ -133,6 +133,27 @@ The exact package depends on the GPU and kernel in use. These commands change
 the running live session only unless the system has a persistent installation;
 the live filesystem is discarded at reboot.
 
+## Live image features
+
+Both live images include the KDE Plasma desktop, Firefox, Kate, and these
+tools:
+
+- **Removable media:** `udisks2` automounting, plus `exfatprogs`, `ntfs-3g`,
+  `btrfs-progs`, and `dosfstools` for common USB and disk formats.
+- **Bluetooth:** `bluez`, `bluez-utils`, and Plasma's `bluedevil` applet, with
+  `bluetooth.service` enabled.
+- **Printing:** CUPS with `print-manager`, with `cups.service` enabled.
+- **Power and sensors:** `power-profiles-daemon`, `lm_sensors`, and `fwupd`.
+- **Locale:** `en_US.UTF-8`, with the timezone set to Australia/Sydney. Change
+  `/etc/localtime` and `/etc/locale.conf` in the profile's `airootfs/` if you
+  need different defaults.
+
+The x86_64 image also includes `intel-media-driver` for Intel video
+acceleration and `vulkan-intel` and `vulkan-nouveau` for the Vulkan drivers.
+
+These features are installed and enabled in the images, but Bluetooth, printing,
+and removable media have not been tested on hardware yet.
+
 ## Apple silicon and VirtualBox
 
 Apple M1 and newer Macs require an ARM64 guest for native VirtualBox

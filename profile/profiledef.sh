@@ -14,7 +14,7 @@ bootmodes=(
 arch='x86_64'
 pacman_conf='pacman.conf'
 airootfs_image_type='squashfs'
-airootfs_image_tool_options=('comp' 'xz' '-Xbcj' 'x86')
+airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86')
 
 file_permissions=(
   ["/etc/shadow"]="0:0:400"

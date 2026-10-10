@@ -65,6 +65,9 @@ docs/
 profile-aarch64/
   airootfs/
     etc/
+      hostname
+      locale.conf
+      locale.gen
       mkinitcpio.conf.d/
         archiso.conf
       nftables.conf
@@ -96,6 +99,8 @@ profile/
   airootfs/
     etc/
       hostname
+      locale.conf
+      locale.gen
       mkinitcpio.conf.d/
         archiso.conf
       motd

@@ -7,6 +7,32 @@ status.
 
 ## 2026-10-10
 
+### x86_64 builds and boots; live feature set added
+
+- Built the x86_64 ISO for the first time, in an emulated Arch container on the
+  M4 Pro. Two profile bugs surfaced and were fixed:
+  - `airootfs_image_tool_options` used `comp`; mksquashfs needs `-comp`.
+  - The releng archiso mkinitcpio config included PXE hooks, which need
+    `nbd-client` and `nfsmount`. The config is now trimmed to the hooks this
+    image uses.
+- Verified in QEMU (UEFI, emulated): the x86_64 ISO boots to the Plasma
+  desktop, with Firefox in the taskbar and the new locale and timezone applied.
+  Not verified on the M14x.
+- Verified: the ARM64 repo ISO boots to the Plasma desktop in VirtualBox with
+  the same feature set.
+- Added to both live profiles: `udisks2`, `exfatprogs`, `ntfs-3g`,
+  `btrfs-progs`, `dosfstools`; `bluez`, `bluez-utils`, `bluedevil`;
+  `power-profiles-daemon`, `lm_sensors`, `fwupd`; `cups`, `print-manager`;
+  `firefox`, `kate`.
+- x86_64 only: `intel-media-driver`, `vulkan-intel`, `vulkan-nouveau`.
+- Default locale `en_US.UTF-8`, timezone Australia/Sydney, and enabled
+  `bluetooth.service` and `cups.service`. Both are set in the profile's
+  `customize_airootfs.sh`.
+- ARM64 hostname set to `lukearch-live`, matching the x86_64 profile.
+- Not verified: Bluetooth, CUPS, removable media, and the NVIDIA and Optimus
+  setup. The live images have no SSH, so service state was not checked.
+- Not done: install to disk, Secure Boot, and automated boot tests in CI.
+
 ### Admin password flow verified on the booted ARM64 image; x86_64 boot fixes
 
 - Ran the admin-password flow on a booted ARM64 live image over SSH (test-only
