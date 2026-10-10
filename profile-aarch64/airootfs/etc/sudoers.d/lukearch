@@ -1,4 +1,3 @@
-Defaults:lukearch !targetpw
 Defaults:%wheel rootpw
 Defaults!/usr/local/sbin/lukearch-set-admin-password !rootpw
 %wheel ALL=(ALL:ALL) ALL

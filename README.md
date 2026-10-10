@@ -10,8 +10,9 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 
 ## Current status
 
-- ✅ Initial x86_64 `archiso` profile scaffold is present under `/profile`.
-- ✅ Build and local QEMU test scripts are included under `/scripts`.
+- ✅ x86_64 `archiso` profile under `/profile`. The ISO builds and boots under
+  UEFI in QEMU to the Plasma desktop; it has not been tested on hardware yet.
+- ✅ Build, QEMU, and VirtualBox test scripts are included under `/scripts`.
 - ✅ The live image provides a lightweight KDE Plasma desktop started by SDDM.
 - ✅ The live environment targets systems with 4 GB of RAM, with zram enabled
   for additional memory headroom.
@@ -19,9 +20,10 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
   sudo administration and default-deny inbound firewall rules.
 - ✅ Keyboard and mouse input use generic libinput drivers, while GPU-specific
   drivers remain optional.
-- ✅ A separate ARM64 profile is available for native Apple M-series
-  virtualization.
-- ⚠️ Native ARM/aarch64 image support is **not implemented yet**.
+- ✅ ARM64 profile under `/profile-aarch64`. The ISO builds on an ARM64 Linux host
+  and boots to the Plasma desktop in VirtualBox on Apple silicon.
+- ⚠️ Booting directly on Apple silicon hardware (outside a VM) is not supported.
+- ⚠️ No installer yet; both images are live-only.
 
 ## Repository layout
 
@@ -79,6 +81,12 @@ paths that differ only by case (for example `usr/lib/Xorg.wrap` and
 `usr/lib/xorg/`). On macOS's default case-insensitive APFS volume, or any
 case-insensitive mount, the build fails with "not overwriting dir with file".
 Use a Linux filesystem or a case-sensitive volume for `WORK_DIR`.
+`build-iso.sh` checks this before building and stops with an error otherwise.
+
+Both profiles set `DisableDownloadTimeout` in their `pacman.conf`, so slow
+mirrors don't abort the package download. pacstrap may ask to confirm the
+installation; answer `Y`, or pipe `yes |` into the script when running it
+unattended.
 
 ## Security notes
 
@@ -92,13 +100,15 @@ The live image is designed to be safer by default on older hardware:
   Set it once with `sudo lukearch-set-admin-password`. That command asks for the
   login password first, then refuses to run once the administrator password
   exists, so the login password cannot replace it later.
-- The administrator password also works with `su` and root console login. The
-  root account stays locked until that one-time setup runs.
+- The administrator password also works for root console login. `su` is limited
+  to members of `wheel` through `pam_wheel`. The root account stays locked until
+  that one-time setup runs.
 - The one exception is `sudo passwd lukearch`, which `lukearch` can run without
   a password. The sudoers rule is not limited to first run; it only lets the
   account change its own login password.
-- SSH is not installed, and only NetworkManager, SDDM, nftables, and the desktop
-  session are enabled.
+- SSH is not installed. The enabled services are NetworkManager, SDDM, nftables,
+  Bluetooth, and the desktop session. CUPS starts on demand through `cups.socket`
+  and listens only on localhost.
 - nftables blocks unsolicited inbound traffic while allowing established
   connections, DHCP, and ICMP/ICMPv6 needed for normal networking.
 - The live filesystem is ephemeral. It is not a substitute for an installed,
@@ -174,11 +184,16 @@ virtualization. Install VirtualBox 7.2 or newer.
    ./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
    ```
 
-The test script creates an ARM platform VM with the `armv8virtual` chipset and
-UEFI firmware. It uses a USB tablet pointer and USB keyboard, because ARM guests
-have no PS/2 controller, so the mouse does not work with PS/2 settings. It refuses to run on non-ARM64 hosts. It replaces any existing VM
-named `Lukearch ARM64`, which is the default `VM_NAME`; override `VM_NAME` to keep
-an existing VM.
+The test script creates an ARM platform VM with the `armv8virtual` chipset, UEFI
+firmware, the `qemuramfb` display, NAT networking, and the ISO on a SATA DVD
+drive. It uses a USB tablet pointer and USB keyboard, because ARM guests have no
+PS/2 controller, so the mouse does not work with PS/2 settings. It refuses to run
+on non-ARM64 hosts.
+
+If a VM with the same name already exists (`Lukearch ARM64` by default), the
+script stops. Set `REPLACE_VM=1` to delete that VM and its disks first, or set
+`VM_NAME` to create another. Set `START_TYPE=headless` to start without a
+window.
 
 The ARM64 profile uses standard UEFI and is intended for VirtualBox ARM64
 guests. The existing x86_64 profile remains the image for Intel and AMD PCs.
@@ -210,6 +225,14 @@ Or provide an explicit ISO path:
 ./scripts/test-iso.sh /absolute/path/to/lukearch.iso
 ```
 
+Without a path, the script picks the newest `*-x86_64.iso` in `out/`. It refuses
+an aarch64 ISO, because `out/` can hold both.
+
+The script boots through UEFI when it finds OVMF firmware (`edk2-ovmf` on Arch
+Linux, or Homebrew's QEMU on macOS), matching the systemd-boot path on modern
+PCs. Set `FIRMWARE=bios` to test the syslinux BIOS path instead. Pass extra QEMU
+options with `QEMU_EXTRA_ARGS`, for example `QEMU_EXTRA_ARGS="-display none"`.
+
 The test boots the KDE Plasma live path with 4096 MB of guest RAM by default.
 This is the supported low-memory path: it does not copy the compressed
 filesystem into RAM, and the live system enables a zram swap device sized to
@@ -227,20 +250,25 @@ On non-x86_64 hosts, this script runs x86_64 emulation and prints a reminder tha
 
 ## ARM and Apple silicon notes
 
-Lukearch does **not** currently produce an Apple-silicon-native image.
-A normal x86_64 `archiso` ISO should not be advertised as natively bootable on Apple silicon.
-
-Practical near-term strategy:
-
-1. Continue building/testing the x86_64 image (including via QEMU/UTM on Apple silicon).
-2. Design a separate aarch64 image profile and boot path.
-3. Validate on generic aarch64 UEFI hardware and Apple silicon-specific targets.
+The ARM64 image targets ARM64 machines with UEFI firmware, and is tested in
+VirtualBox on Apple silicon. It does not boot directly on Apple silicon hardware,
+which needs the Asahi Linux boot path. The x86_64 ISO cannot run natively on Apple
+silicon.
 
 See [`docs/arm-support.md`](docs/arm-support.md) for details.
 
 ## Milestones
 
-1. Keep x86_64 ISO builds reproducible and minimal.
-2. Expand smoke tests and release checks.
-3. Add an aarch64-capable profile and VM test path.
-4. Explore Apple silicon-native boot strategy with clear support boundaries.
+Done:
+
+- x86_64 and ARM64 live images that build and boot to the Plasma desktop
+  (x86_64 in QEMU, ARM64 in VirtualBox).
+
+Next:
+
+1. Test the x86_64 image on hardware, starting with the Alienware M14x
+   (NVIDIA/Optimus, Wi-Fi, Bluetooth, audio).
+2. Add automated boot tests and release checks to CI.
+3. Add an install-to-disk path.
+4. Migrate `customize_airootfs.sh` to declarative airootfs files before archiso
+   removes support for it.

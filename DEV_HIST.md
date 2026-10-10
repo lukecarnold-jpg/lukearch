@@ -20,6 +20,54 @@ status.
 - Added a CI check for the USB pointer setting. The check uses a plain pattern,
   because the first version left the CI run without any steps.
 
+### Project review fixes
+
+Verified by building both ISOs with the repo's own `build-iso.sh` (ARM64 in an
+Arch Linux ARM VM, x86_64 in an emulated Arch container), booting them through
+the updated test scripts, and inspecting the built images.
+
+- **VirtualBox script** (`test-virtualbox.sh`): uses a SATA DVD drive, the
+  `qemuramfb` display, and NAT, matching the verified VM. It no longer deletes an
+  existing VM unless `REPLACE_VM=1`, and accepts `START_TYPE`. Verified: the
+  script boots the ARM64 ISO to the Plasma desktop, and a second run stops
+  instead of replacing the VM.
+- **QEMU script** (`test-iso.sh`): picks only `*-x86_64.iso`, refuses aarch64
+  ISOs, and boots through UEFI when OVMF is present (Arch `edk2-ovmf` or
+  Homebrew), falling back to BIOS. Adds `FIRMWARE` and `QEMU_EXTRA_ARGS`.
+  Verified: it boots the x86_64 ISO under UEFI to the Plasma desktop.
+- **x86_64 X11 fallback:** added `plasma-x11-session`; Wayland stays the default
+  session.
+- **Failed boot unit:** masked `systemd-loop@.service` in both profiles. It tried
+  to attach the boot CD to a loop device and failed. Verified: the failure no
+  longer appears in the x86_64 boot log.
+- **Build robustness:** `build-iso.sh` stops early on a case-insensitive
+  `WORK_DIR`. Both `pacman.conf` files set `DisableDownloadTimeout`. Confirmed
+  that mkinitcpio's autodetect failure is already fixed by the profiles'
+  `archiso.conf`, which leaves out the `autodetect` hook; both builds succeeded
+  without the earlier bind-mount workaround.
+- **ARM64 branding:** added `os-release` and `motd`, so the image identifies as
+  Lukearch.
+- **su:** limited to `wheel` with `pam_wheel`. Root console login still accepts
+  the administrator password.
+- **sudoers:** removed the redundant `Defaults:lukearch !targetpw`.
+- **CUPS:** enabled `cups.socket` instead of `cups.service`, so CUPS starts on
+  demand.
+- **Docs:** README status, security notes, build and test instructions, ARM
+  notes, and milestones updated; `docs/arm-support.md` rewritten for the current
+  ARM64 state.
+- **CI:** the required-files list includes the newer airootfs files.
+- Verified in the built images: the `pam_wheel` rule, the sudoers change, the
+  Lukearch `os-release`, the `systemd-loop` mask, `cups.socket`, and the Plasma
+  X11 session are present in both ISOs.
+- Not changed: `customize_airootfs.sh` is still used. It works in archiso 91, and
+  migrating needs declarative user files and another way to rename the ARM64
+  kernel, so it is left as a separate change.
+- Not done: deleting the merged `fix/admin-sudo-and-arm-vbox` and
+  `copilot/setup-initial-lukearch-repository` branches. The permission system
+  blocked it.
+- Not verified at runtime: `su` restriction and CUPS socket activation, because
+  the live images have no SSH.
+
 ### CI tree check fixed
 
 - A macOS `.DS_Store` file had been committed in the USB pointer change. It is

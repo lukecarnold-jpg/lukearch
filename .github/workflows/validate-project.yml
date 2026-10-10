@@ -46,6 +46,14 @@ jobs:
             profile/airootfs/usr/local/sbin/lukearch-set-admin-password
             profile-aarch64/airootfs/etc/sudoers.d/lukearch
             profile-aarch64/airootfs/usr/local/sbin/lukearch-set-admin-password
+            profile/airootfs/etc/mkinitcpio.conf.d/archiso.conf
+            profile/airootfs/etc/pam.d/su
+            profile/airootfs/etc/locale.conf
+            profile-aarch64/airootfs/etc/mkinitcpio.conf.d/archiso.conf
+            profile-aarch64/airootfs/etc/udev/rules.d/71-lukearch-framebuffer-seat.rules
+            profile-aarch64/airootfs/etc/pam.d/su
+            profile-aarch64/airootfs/etc/locale.conf
+            profile-aarch64/airootfs/etc/os-release
             profile/airootfs/root/customize_airootfs.sh
             profile/airootfs/etc/os-release
             profile/airootfs/etc/hostname

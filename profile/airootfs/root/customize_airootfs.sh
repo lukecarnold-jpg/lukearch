@@ -14,4 +14,4 @@ systemctl enable sddm.service
 locale-gen
 ln -sf /usr/share/zoneinfo/Australia/Sydney /etc/localtime
 systemctl enable bluetooth.service
-systemctl enable cups.service
+systemctl enable cups.socket

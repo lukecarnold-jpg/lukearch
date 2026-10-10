@@ -70,12 +70,18 @@ profile-aarch64/
       locale.gen
       mkinitcpio.conf.d/
         archiso.conf
+      motd
       nftables.conf
+      os-release
+      pam.d/
+        su
       sddm.conf.d/
         autologin.conf
       sudoers.d/
         lukearch
       systemd/
+        system/
+          systemd-loop@.service
         zram-generator.conf
       udev/
         rules.d/
@@ -106,6 +112,8 @@ profile/
       motd
       nftables.conf
       os-release
+      pam.d/
+        su
       sddm.conf.d/
         autologin.conf
       sudoers.d/
@@ -114,6 +122,7 @@ profile/
         system/
           multi-user.target.wants/
             NetworkManager.service
+          systemd-loop@.service
         zram-generator.conf
     root/
       README

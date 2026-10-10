@@ -14,7 +14,7 @@ systemctl enable sddm.service
 locale-gen
 ln -sf /usr/share/zoneinfo/Australia/Sydney /etc/localtime
 systemctl enable bluetooth.service
-systemctl enable cups.service
+systemctl enable cups.socket
 
 # archiso copies vmlinuz-<pkgbase> into the ISO; the linux-aarch64 package installs the kernel as Image.
 cp /boot/Image /boot/vmlinuz-linux-aarch64
