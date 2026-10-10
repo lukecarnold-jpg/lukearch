@@ -7,6 +7,29 @@ status.
 
 ## 2026-10-10
 
+### Admin password flow verified on the booted ARM64 image; x86_64 boot fixes
+
+- Ran the admin-password flow on a booted ARM64 live image over SSH (test-only
+  build). The login password sets via `sudo passwd lukearch`; sudo rejects the
+  login password before and after setup; the admin password authorizes sudo; the
+  setup command refuses to run a second time. Root and the login account end
+  locked and set as designed.
+- Desktop options checked against the ARM64 repos: Plasma X11 (current, verified),
+  XFCE (`xfce4-session`, `lightdm`; X11 only, lightest), labwc (Wayland
+  compositor, needs DRM), GNOME (`gnome-shell`, Wayland-first), Cinnamon and MATE
+  (X11). Plasma X11 stays as the default. XFCE is the fallback if the 4 GB RAM
+  target or Plasma X11 causes trouble on the physical test hardware.
+- Applied the same boot fixes to the x86_64 profile, which had the same gaps:
+  - Added `mkinitcpio-archiso` and the releng `mkinitcpio.conf.d/archiso.conf`,
+    so the initramfs includes the live-boot hooks.
+  - Added `syslinux`, `memtest86+`, and `memtest86+-efi`. The BIOS boot mode
+    requires `syslinux` in the package list.
+  - Moved boot modes to `bios.syslinux` and `uefi.systemd-boot`, replacing the
+    deprecated `uefi-x64` and `.mbr` names.
+  - Added `systemd.firstboot=off` to both UEFI entries.
+- Verified: mkarchiso's profile validation passes for the x86_64 profile. The
+  full x86_64 ISO has not been built or booted, because the build host is ARM64.
+
 ### ARM64 live image reaches the Plasma desktop in VirtualBox
 
 - Found why the desktop didn't start. VirtualBox's ARM guest exposes only an

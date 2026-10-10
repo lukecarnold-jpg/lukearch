@@ -4,6 +4,10 @@ linux-firmware
 amd-ucode
 intel-ucode
 mkinitcpio
+mkinitcpio-archiso
+syslinux
+memtest86+
+memtest86+-efi
 zram-generator
 libinput
 xf86-input-libinput

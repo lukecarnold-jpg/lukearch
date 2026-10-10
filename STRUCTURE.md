@@ -96,6 +96,8 @@ profile/
   airootfs/
     etc/
       hostname
+      mkinitcpio.conf.d/
+        archiso.conf
       motd
       nftables.conf
       os-release
