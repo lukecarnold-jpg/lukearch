@@ -1,0 +1,5 @@
+Welcome to Lukearch.
+
+Lukearch is an Arch-based, unofficial live environment for development and testing.
+This image currently targets x86_64 archiso builds.
+See /root/README for quick project context.

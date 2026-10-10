@@ -1,0 +1,9 @@
+Lukearch live environment marker
+================================
+
+This live root filesystem is generated from the lukearch archiso profile.
+
+Important:
+- Lukearch is Arch-based and unofficial.
+- No insecure default user accounts or static passwords are configured here.
+- ARM/Apple silicon support is tracked in docs/arm-support.md in the repository.

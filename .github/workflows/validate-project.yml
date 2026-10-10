@@ -1,0 +1,46 @@
+name: Validate project skeleton
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate shell syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-iso.sh
+          bash -n scripts/test-iso.sh
+          bash -n profile/profiledef.sh
+
+      - name: Validate required files exist
+        run: |
+          set -euo pipefail
+          required=(
+            profile/profiledef.sh
+            profile/packages.x86_64
+            profile/pacman.conf
+            profile/airootfs/etc/os-release
+            profile/airootfs/etc/hostname
+            profile/airootfs/etc/motd
+            docs/arm-support.md
+            scripts/build-iso.sh
+            scripts/test-iso.sh
+            README.md
+            LICENSE
+          )
+
+          for file in "${required[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing required file: $file" >&2
+              exit 1
+            fi
+          done
