@@ -5,6 +5,64 @@ Lukearch. Add a new dated entry for every repository change, and update
 `README.md` when the change affects usage, support, build behavior, or project
 status.
 
+## 2026-10-11
+
+### Guided installer
+
+- Added `lukearch-install` to both live profiles. The script is identical in both
+  (CI checks this). It runs as a dialog menu, or from a settings file with
+  `--config`.
+- Recommended settings are the defaults: erase a whole disk, ext4, no
+  encryption, zram swap, Australia/Sydney, en_US.UTF-8, US keyboard, hostname
+  `lukearch`, sudo asks for the administrator (root) password, Plasma (Wayland
+  on x86_64, X11 on ARM), no autologin.
+- Power users can change every setting in the menu, or run `--print-config`,
+  edit the file, check it with `--dry-run`, and install with `--config`. Unknown
+  keys are rejected. Passwords are never stored: they are read from the
+  terminal, or from stdin when a script pipes them in.
+- Other options: existing partitions (dual boot, keeping the EFI partition),
+  btrfs with `@` and `@home` subvolumes, LUKS2 root encryption, `KERNEL=`, and
+  extra packages.
+- Safety: the installer never offers the disk it runs from or the live medium,
+  including through LUKS or LVM. It shows the plan and requires a typed `ERASE`
+  unless `CONFIRM_ERASE=yes`.
+- The installed system gets the live system's `su` PAM policy, nftables rules,
+  zram config, and os-release. The installer also writes the systemd-boot entry,
+  the initramfs, and the sudoers rule for the chosen admin password.
+- Live packages: added `arch-install-scripts`, `dialog`, `cryptsetup`, and the
+  keyring for each architecture (`archlinux-keyring` on x86_64,
+  `archlinuxarm-keyring` on ARM64). Added the target package list at
+  `usr/share/lukearch/install-packages` and a desktop entry that runs the
+  installer in a terminal.
+- CI: lints the installer with shellcheck, checks that both copies match, and
+  checks the required files, package lists, and key installer features.
+
+### Installer test on ARM64
+
+- Ran the installer on the ARM64 builder VM against a blank 24 GB disk with the
+  recommended settings. The install completed. The safety check refused the
+  builder's own system disk.
+- Booting the installed disk in a new VirtualBox VM reached the SDDM login
+  screen (Plasma X11 preselected). Logging in reached the Plasma desktop.
+- Found and fixed two problems during the test:
+  - `autodetect` added no modules to the target's initramfs, because it reads
+    `/sys`, which `arch-chroot` does not provide. The installer now omits
+    `autodetect`, so the image includes the storage drivers.
+  - The ARM64 keyring was not populated on the target. The installer now runs
+    `pacman-key --populate` for `archlinux` and `archlinuxarm` when the keyring
+    exists.
+- The installed disk had no display until it had the `master-of-seat` udev
+  rule. The builder is not a live image, so the installer had no rule to copy.
+  The installer copies the rule when the live image has it. The rebuilt ARM64
+  ISO contains the rule, the installer, the package list, and the ARM64
+  keyring (checked in the squashfs). The installed-from-live boot is not yet
+  tested.
+- The test also surfaced two non-issues: the duplicated lines in the output file
+  were a display artifact (the log has one "Installation complete" line), and the
+  sddm default session on the login screen follows its own rules.
+- Not tested: LUKS2 encryption, btrfs, the existing-partitions mode, the dialog
+  menus in a terminal, the x86_64 installer, and BIOS systems (not supported).
+
 ## 2026-10-10
 
 ### ARM64 VirtualBox pointer and keyboard fixed

@@ -1,0 +1,911 @@
+#!/usr/bin/env bash
+# Lukearch installer: copies the live system to a disk.
+#
+#   sudo lukearch-install                            guided install
+#   sudo lukearch-install --config FILE              install with the settings in FILE
+#   sudo lukearch-install --config FILE --dry-run    check FILE and print the plan
+#   lukearch-install --print-config                  print the settings as a FILE
+#
+# The recommended settings are the defaults. Settings are KEY=value lines.
+# This script is identical in both profiles; CI checks that.
+set -euo pipefail
+
+APP_TITLE="Lukearch installer"
+LOG_FILE="/var/log/lukearch-install.log"
+TARGET="${TARGET:-/mnt}"
+PACKAGE_LIST="${PACKAGE_LIST:-/usr/share/lukearch/install-packages}"
+BTRFS_OPTIONS="compress=zstd:1,noatime"
+SETTING_FIELDS="INSTALL_MODE DISK ESP_PART ROOT_PART FILESYSTEM ENCRYPT SWAP TIMEZONE LOCALE KEYMAP HOSTNAME USERNAME ADMIN SESSION AUTOLOGIN KERNEL EXTRA_PACKAGES CONFIRM_ERASE"
+
+INTERACTIVE=no
+ESP_DEV=""
+ROOT_DEV=""
+MAPPER_DEV=""
+CMDLINE=""
+
+fail() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+log() {
+  echo "==> $*"
+}
+
+in_list() {
+  case " $2 " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+usage() {
+  cat <<USAGE
+Usage:
+  sudo lukearch-install                          guided install
+  sudo lukearch-install --config FILE            install with the settings in FILE
+  sudo lukearch-install --config FILE --dry-run  check FILE and print the plan
+  lukearch-install --print-config                print the recommended settings
+USAGE
+}
+
+set_defaults() {
+  ARCH_NAME="$(uname -m)"
+  if [[ "$ARCH_NAME" == "arm64" ]]; then
+    ARCH_NAME="aarch64"
+  fi
+  case "$ARCH_NAME" in
+    x86_64)
+      KERNEL="linux"
+      SESSION="plasma"
+      ;;
+    aarch64)
+      # Virtual ARM machines have no DRM device, so the desktop uses X11.
+      KERNEL="linux-aarch64"
+      SESSION="plasmax11"
+      ;;
+    *) fail "unsupported architecture: $ARCH_NAME" ;;
+  esac
+  INSTALL_MODE="wipe"
+  DISK=""
+  ESP_PART=""
+  ROOT_PART=""
+  FILESYSTEM="ext4"
+  ENCRYPT="no"
+  SWAP="zram"
+  TIMEZONE="Australia/Sydney"
+  LOCALE="en_US.UTF-8"
+  KEYMAP="us"
+  HOSTNAME="lukearch"
+  USERNAME="lukearch"
+  ADMIN="root"
+  AUTOLOGIN="no"
+  EXTRA_PACKAGES=""
+  CONFIRM_ERASE="no"
+}
+
+print_settings() {
+  cat <<HEADER
+# Lukearch installer settings. Each line is KEY=value.
+# Passwords are never stored here; the installer asks for them.
+#
+# Check this file without changing any disk:
+#   sudo lukearch-install --config FILE --dry-run
+# Install with it:
+#   sudo lukearch-install --config FILE
+HEADER
+  cat <<SETTINGS
+
+# Wipe erases DISK. Existing installs onto ROOT_PART and keeps ESP_PART.
+INSTALL_MODE=$INSTALL_MODE
+# Whole disk to erase in wipe mode, for example /dev/sda or /dev/nvme0n1.
+DISK=$DISK
+# Existing FAT32 EFI partition and root partition, used in existing mode.
+ESP_PART=$ESP_PART
+ROOT_PART=$ROOT_PART
+# Root filesystem: ext4, or btrfs with @ and @home subvolumes.
+FILESYSTEM=$FILESYSTEM
+# Encrypt the root partition with LUKS2: yes or no.
+ENCRYPT=$ENCRYPT
+# Swap: zram (compressed RAM swap) or none.
+SWAP=$SWAP
+# Timezone from /usr/share/zoneinfo, for example Australia/Sydney.
+TIMEZONE=$TIMEZONE
+# UTF-8 locale, for example en_US.UTF-8.
+LOCALE=$LOCALE
+# Console keyboard layout, for example us, uk, or de.
+KEYMAP=$KEYMAP
+HOSTNAME=$HOSTNAME
+USERNAME=$USERNAME
+# The password sudo asks for: root (the administrator password) or user (the user's password).
+ADMIN=$ADMIN
+# Desktop session: plasma (Wayland) or plasmax11 (X11).
+SESSION=$SESSION
+# Log in automatically at boot: yes or no.
+AUTOLOGIN=$AUTOLOGIN
+# Kernel package: linux or linux-lts on x86_64, linux-aarch64 on ARM.
+KERNEL=$KERNEL
+# Extra packages to install, separated by spaces.
+EXTRA_PACKAGES=$EXTRA_PACKAGES
+# yes skips the typed ERASE confirmation. Use it only for unattended installs.
+CONFIRM_ERASE=$CONFIRM_ERASE
+SETTINGS
+}
+
+# Prints the value of each field that is not allowed. Prints nothing when valid.
+field_error() {
+  local field="$1" value="$2" err=""
+  case "$field" in
+    INSTALL_MODE)
+      in_list "$value" "wipe existing" || err="Choose wipe or existing."
+      ;;
+    DISK)
+      if [[ -n "$value" ]]; then
+        if [[ ! -b "$value" || "$(lsblk -dno TYPE "$value" 2>/dev/null)" != "disk" ]]; then
+          err="$value is not a disk."
+        elif on_running_disk "$value"; then
+          err="$value is the disk this system runs from."
+        fi
+      fi
+      ;;
+    ESP_PART|ROOT_PART)
+      if [[ -n "$value" ]]; then
+        if [[ ! -b "$value" || "$(lsblk -dno TYPE "$value" 2>/dev/null)" != "part" ]]; then
+          err="$value is not a partition."
+        elif on_running_disk "$value"; then
+          err="$value is on the disk this system runs from."
+        elif [[ "$field" == "ESP_PART" && "$(blkid -s TYPE -o value "$value" 2>/dev/null)" != "vfat" ]]; then
+          err="$value is not a FAT32 EFI partition."
+        elif [[ "$field" == "ROOT_PART" && "$value" == "$ESP_PART" ]]; then
+          err="The root partition cannot be the EFI partition."
+        fi
+      fi
+      ;;
+    FILESYSTEM)
+      in_list "$value" "ext4 btrfs" || err="Choose ext4 or btrfs."
+      ;;
+    ENCRYPT)
+      in_list "$value" "yes no" || err="Choose yes or no."
+      ;;
+    SWAP)
+      in_list "$value" "zram none" || err="Choose zram or none."
+      ;;
+    TIMEZONE)
+      if ! [[ "$value" =~ ^[A-Za-z0-9_+/-]+$ && -f "/usr/share/zoneinfo/$value" ]]; then
+        err="Unknown timezone: $value"
+      fi
+      ;;
+    LOCALE)
+      if ! [[ "$value" =~ ^[A-Za-z0-9_.@-]+$ ]] || ! grep -qxF "$value UTF-8" /usr/share/i18n/SUPPORTED 2>/dev/null; then
+        err="Unknown locale: $value. Use a UTF-8 locale such as en_US.UTF-8."
+      fi
+      ;;
+    KEYMAP)
+      if ! [[ "$value" =~ ^[A-Za-z0-9_-]+$ ]] || ! localectl list-keymaps 2>/dev/null | grep -qx "$value"; then
+        err="Unknown keyboard layout: $value"
+      fi
+      ;;
+    HOSTNAME)
+      if ! [[ "$value" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,62})$ ]]; then
+        err="Hostname must be letters, digits, and hyphens, up to 63 characters."
+      fi
+      ;;
+    USERNAME)
+      if ! [[ "$value" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$value" != "root" ]]; then
+        err="Username must start with a lowercase letter, use lowercase letters, digits, _ or -, and not be root."
+      fi
+      ;;
+    ADMIN)
+      in_list "$value" "root user" || err="Choose root or user."
+      ;;
+    SESSION)
+      in_list "$value" "plasma plasmax11" || err="Choose plasma (Wayland) or plasmax11 (X11)."
+      ;;
+    AUTOLOGIN)
+      in_list "$value" "yes no" || err="Choose yes or no."
+      ;;
+    KERNEL)
+      if ! [[ "$value" =~ ^linux(-[a-z0-9]+)?$ ]]; then
+        err="Kernel must be a package name such as linux, linux-lts, or linux-aarch64."
+      fi
+      ;;
+    EXTRA_PACKAGES)
+      local pkg
+      for pkg in $value; do
+        if ! [[ "$pkg" =~ ^[a-z0-9@._+-]+$ ]]; then
+          err="Invalid package name: $pkg"
+          break
+        fi
+      done
+      ;;
+    CONFIRM_ERASE)
+      in_list "$value" "yes no" || err="Choose yes or no."
+      ;;
+    *)
+      err="Unknown setting: $field"
+      ;;
+  esac
+  printf '%s' "$err"
+}
+
+# Prints every problem with the current settings. "complete" also requires a
+# disk or partitions. Returns non-zero when there is a problem.
+check_settings() {
+  local field msg out=""
+  for field in $SETTING_FIELDS; do
+    msg="$(field_error "$field" "${!field}")"
+    if [[ -n "$msg" ]]; then
+      out+="$msg"$'\n'
+    fi
+  done
+  if [[ "$1" == "yes" ]]; then
+    if [[ "$INSTALL_MODE" == "wipe" && -z "$DISK" ]]; then
+      out+="Choose the disk to erase."$'\n'
+    elif [[ "$INSTALL_MODE" == "existing" && ( -z "$ESP_PART" || -z "$ROOT_PART" ) ]]; then
+      out+="Choose the EFI partition and the root partition."$'\n'
+    fi
+  fi
+  if [[ -n "$out" ]]; then
+    printf '%s' "$out"
+    return 1
+  fi
+}
+
+# Stores a value only when it is allowed. Shows the reason when it is not.
+apply_field() {
+  local err
+  err="$(field_error "$1" "$2")"
+  if [[ -n "$err" ]]; then
+    ui_msg "$err"
+    return 1
+  fi
+  printf -v "$1" '%s' "$2"
+}
+
+# Loads KEY=value settings. Only known keys are accepted; passwords are not.
+load_config() {
+  local file="$1" line key value
+  [[ -r "$file" ]] || fail "cannot read $file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]*(#|$) ]]; then
+      continue
+    fi
+    [[ "$line" == *=* ]] || fail "$file: not a KEY=value line: $line"
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="${key//[[:space:]]/}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    value="${value#\"}"
+    value="${value%\"}"
+    case " $SETTING_FIELDS " in
+      *" $key "*) printf -v "$key" '%s' "$value" ;;
+      *) fail "$file: unknown setting $key" ;;
+    esac
+  done < "$file"
+}
+
+# Prints the whole disks a device sits on, for example /dev/sda for /dev/sda2
+# or for an encrypted or LVM volume on top of it.
+disks_of() {
+  lsblk -slno NAME,TYPE "$1" 2>/dev/null | awk '$2 == "disk" { print "/dev/" $1 }'
+}
+
+# Prints the disks this system runs from: the live medium and the disk holding /.
+# The installer never offers these, so it cannot erase the system it runs on.
+running_disks() {
+  local source
+  for source in "$(findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null || true)" "$(findmnt -n -o SOURCE / 2>/dev/null || true)"; do
+    if [[ "$source" == /dev/* ]]; then
+      disks_of "$source"
+    fi
+  done
+}
+
+# Succeeds when a disk or partition is on a disk this system runs from.
+on_running_disk() {
+  disks_of "$1" | grep -qxF -f <(running_disks)
+}
+
+# Prints the device path of partition N on a disk (/dev/sda1, /dev/nvme0n1p1).
+part_path() {
+  case "$1" in
+    *[0-9]) printf '%sp%s' "$1" "$2" ;;
+    *) printf '%s%s' "$1" "$2" ;;
+  esac
+}
+
+ui_msg() {
+  if [[ "$INTERACTIVE" == "yes" ]]; then
+    dialog --clear --backtitle "$APP_TITLE" --msgbox "$1" 0 0 || true
+  else
+    printf '%s\n' "$1" >&2
+  fi
+}
+
+ui_menu() { # default title text tag item...
+  local default="$1" title="$2" text="$3"
+  shift 3
+  if [[ -n "$default" ]]; then
+    dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
+      --default-item "$default" --menu "$text" 0 0 0 "$@"
+  else
+    dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
+      --menu "$text" 0 0 0 "$@"
+  fi
+}
+
+ui_input() { # title text default
+  dialog --clear --stdout --backtitle "$APP_TITLE" --title "$1" \
+    --inputbox "$2" 0 0 "$3"
+}
+
+ui_yesno() { # text
+  dialog --clear --backtitle "$APP_TITLE" --yesno "$1" 0 0
+}
+
+# Reads one line from stdin (the terminal, or a pipe for scripted installs).
+ask_tty() {
+  local answer
+  IFS= read -r -p "$1" answer
+  printf '%s' "$answer"
+}
+
+# Reads a secret from stdin. Nothing is echoed while it is typed.
+read_secret() {
+  local label="$1" value
+  if [[ "$INTERACTIVE" == "yes" ]]; then
+    dialog --clear --stdout --backtitle "$APP_TITLE" --title "$label" \
+      --passwordbox "Type the password. Nothing is shown while you type." 0 0
+  else
+    IFS= read -r -s -p "$label: " value
+    echo >&2
+    printf '%s' "$value"
+  fi
+}
+
+# Asks for a password twice and prints it. Passwords must be at least 8 characters.
+new_password() {
+  local label="$1" first second
+  while true; do
+    first="$(read_secret "$label")" || return 1
+    if (( ${#first} < 8 )); then
+      ui_msg "The password must be at least 8 characters."
+      continue
+    fi
+    second="$(read_secret "Repeat: $label")" || return 1
+    if [[ "$first" == "$second" ]]; then
+      printf '%s' "$first"
+      return 0
+    fi
+    ui_msg "The two entries do not match. Try again."
+  done
+}
+
+admin_label() {
+  if [[ "$ADMIN" == "root" ]]; then
+    echo "the root (administrator) password"
+  else
+    echo "the user's password"
+  fi
+}
+
+storage_summary() {
+  if [[ "$INSTALL_MODE" == "wipe" ]]; then
+    echo "erase ${DISK:-(not chosen)}"
+  else
+    echo "existing partitions, root ${ROOT_PART:-(not chosen)}"
+  fi
+}
+
+describe_plan() {
+  if [[ "$INSTALL_MODE" == "wipe" ]]; then
+    echo "Erase $DISK and create a 1 GiB EFI partition and a root partition."
+  else
+    echo "Format $ROOT_PART as the root filesystem. The EFI partition $ESP_PART is kept."
+  fi
+  echo "Filesystem: $FILESYSTEM    Encryption: $ENCRYPT    Swap: $SWAP"
+  echo "Timezone: $TIMEZONE    Language: $LOCALE    Keyboard: $KEYMAP"
+  echo "Hostname: $HOSTNAME    User: $USERNAME    Sudo asks for: $(admin_label)"
+  echo "Desktop: $SESSION    Autologin: $AUTOLOGIN    Kernel: $KERNEL"
+  if [[ -n "$EXTRA_PACKAGES" ]]; then
+    echo "Extra packages: $EXTRA_PACKAGES"
+  fi
+}
+
+check_environment() {
+  local cmd
+  [[ $EUID -eq 0 ]] || fail "run the installer as root: sudo lukearch-install"
+  [[ -d /sys/firmware/efi ]] || fail "this installer needs UEFI firmware. BIOS systems are not supported."
+  [[ -r "$PACKAGE_LIST" ]] || fail "missing package list: $PACKAGE_LIST"
+  for cmd in lsblk findmnt blkid sfdisk wipefs blockdev udevadm mkfs.fat mkfs.ext4 mkfs.btrfs btrfs cryptsetup pacstrap genfstab arch-chroot bootctl; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "missing required command: $cmd"
+  done
+  if mountpoint -q "$TARGET"; then
+    fail "$TARGET is already mounted. Unmount it before installing."
+  fi
+}
+
+# Shows the plan, then asks for confirmation before anything is erased.
+confirm_install() {
+  if [[ "$INTERACTIVE" == "yes" ]]; then
+    ui_yesno "$(describe_plan)"$'\n\n'"Continue? The data on the chosen disk or partition will be erased." || return 1
+    return 0
+  fi
+  describe_plan >&2
+  if [[ "$CONFIRM_ERASE" == "yes" ]]; then
+    return 0
+  fi
+  [[ "$(ask_tty 'Type ERASE to continue: ')" == "ERASE" ]] || fail "installation cancelled"
+}
+
+# Asks for the passwords. They are kept only in memory for this run.
+collect_passwords() {
+  if [[ "$ENCRYPT" == "yes" ]]; then
+    LUKS_PASSWORD="$(new_password "Disk encryption passphrase")" || return 1
+  fi
+  if [[ "$ADMIN" == "root" ]]; then
+    ADMIN_PASSWORD="$(new_password "Administrator (root and sudo) password")" || return 1
+  fi
+  USER_PASSWORD="$(new_password "Password for $USERNAME")" || return 1
+}
+
+# Validates, asks for passwords and confirmation, then installs.
+run_install() {
+  local problems
+  if ! problems="$(check_settings yes)"; then
+    ui_msg "Fix these settings first:"$'\n\n'"$problems"
+    return 1
+  fi
+  check_environment
+  collect_passwords || return 1
+  confirm_install || return 1
+  install_system
+}
+
+install_system() {
+  mkdir -p "$(dirname "$LOG_FILE")"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+  trap cleanup_after_exit EXIT
+  log "Installing Lukearch. Full log: $LOG_FILE"
+  prepare_disks
+  install_packages
+  copy_live_settings
+  configure_target
+  set_passwords
+  save_settings_to_target
+  finish_install
+}
+
+prepare_disks() {
+  if [[ "$INSTALL_MODE" == "wipe" ]]; then
+    log "Erasing $DISK and creating the partitions"
+    wipefs --all --force "$DISK" >/dev/null
+    sfdisk --wipe always "$DISK" <<'LAYOUT'
+label: gpt
+,1GiB,U
+,,L
+LAYOUT
+    blockdev --rereadpt "$DISK" 2>/dev/null || true
+    udevadm settle
+    ESP_DEV="$(part_path "$DISK" 1)"
+    ROOT_DEV="$(part_path "$DISK" 2)"
+    log "Formatting the EFI partition"
+    mkfs.fat -F32 -n LUKEARCHESP "$ESP_DEV"
+  else
+    ESP_DEV="$ESP_PART"
+    ROOT_DEV="$ROOT_PART"
+  fi
+
+  if [[ "$ENCRYPT" == "yes" ]]; then
+    log "Encrypting $ROOT_DEV with LUKS2"
+    printf '%s' "$LUKS_PASSWORD" | cryptsetup --batch-mode --type luks2 --key-file=- luksFormat "$ROOT_DEV"
+    printf '%s' "$LUKS_PASSWORD" | cryptsetup --key-file=- open "$ROOT_DEV" cryptroot
+    MAPPER_DEV="/dev/mapper/cryptroot"
+  else
+    MAPPER_DEV="$ROOT_DEV"
+  fi
+
+  mkdir -p "$TARGET"
+  if [[ "$FILESYSTEM" == "btrfs" ]]; then
+    log "Creating btrfs with @ and @home subvolumes"
+    mkfs.btrfs -f -q -L lukearch "$MAPPER_DEV"
+    mount "$MAPPER_DEV" "$TARGET"
+    btrfs subvolume create "$TARGET/@" >/dev/null
+    btrfs subvolume create "$TARGET/@home" >/dev/null
+    umount "$TARGET"
+    mount -o "subvol=@,$BTRFS_OPTIONS" "$MAPPER_DEV" "$TARGET"
+    mkdir -p "$TARGET/home"
+    mount -o "subvol=@home,$BTRFS_OPTIONS" "$MAPPER_DEV" "$TARGET/home"
+  else
+    log "Creating the ext4 root filesystem"
+    mkfs.ext4 -q -F -L lukearch "$MAPPER_DEV"
+    mount "$MAPPER_DEV" "$TARGET"
+  fi
+  mkdir -p "$TARGET/boot"
+  mount -o umask=0077 "$ESP_DEV" "$TARGET/boot"
+
+  if [[ "$ENCRYPT" == "yes" ]]; then
+    CMDLINE="rd.luks.name=$(blkid -s UUID -o value "$ROOT_DEV")=cryptroot root=/dev/mapper/cryptroot"
+  else
+    CMDLINE="root=UUID=$(blkid -s UUID -o value "$MAPPER_DEV")"
+  fi
+  CMDLINE+=" rw systemd.firstboot=off"
+  if [[ "$FILESYSTEM" == "btrfs" ]]; then
+    CMDLINE+=" rootflags=subvol=@"
+  fi
+}
+
+install_packages() {
+  local packages=("base" "$KERNEL") line unique=()
+  while IFS= read -r line; do
+    if [[ -z "$line" || "$line" == \#* ]]; then
+      continue
+    fi
+    packages+=("$line")
+  done < "$PACKAGE_LIST"
+  if [[ -n "$EXTRA_PACKAGES" ]]; then
+    # shellcheck disable=SC2206
+    packages+=($EXTRA_PACKAGES)
+  fi
+  mapfile -t unique < <(printf '%s\n' "${packages[@]}" | sort -u)
+  log "Installing ${#unique[@]} packages onto $TARGET"
+  pacstrap -K "$TARGET" "${unique[@]}" < <(yes Y)
+}
+
+copy_if_present() { # source destination
+  if [[ -f "$1" ]]; then
+    install -Dm644 "$1" "$2"
+  fi
+}
+
+copy_live_settings() {
+  log "Copying the live system's settings"
+  copy_if_present /etc/pam.d/su "$TARGET/etc/pam.d/su"
+  copy_if_present /etc/nftables.conf "$TARGET/etc/nftables.conf"
+  if [[ -f /etc/os-release ]]; then
+    rm -f "$TARGET/etc/os-release"
+    install -m644 /etc/os-release "$TARGET/etc/os-release"
+  fi
+  if [[ "$SWAP" == "zram" ]]; then
+    copy_if_present /etc/systemd/zram-generator.conf "$TARGET/etc/systemd/zram-generator.conf"
+  fi
+  copy_if_present /etc/udev/rules.d/71-lukearch-framebuffer-seat.rules \
+    "$TARGET/etc/udev/rules.d/71-lukearch-framebuffer-seat.rules"
+  genfstab -U "$TARGET" > "$TARGET/etc/fstab"
+}
+
+configure_target() {
+  log "Configuring the system"
+  arch-chroot "$TARGET" bash -s -- \
+    "$TIMEZONE" "$LOCALE" "$KEYMAP" "$HOSTNAME" "$USERNAME" "$ADMIN" \
+    "$SESSION" "$AUTOLOGIN" "$ENCRYPT" "$KERNEL" "$ARCH_NAME" "$CMDLINE" <<'CHROOT'
+set -euo pipefail
+timezone="$1"; locale="$2"; keymap="$3"; hostname="$4"; username="$5"; admin="$6"
+session="$7"; autologin="$8"; encrypt="$9"; kernel="${10}"; arch="${11}"; cmdline="${12}"
+
+ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
+hwclock --systohc 2>/dev/null || true
+
+sed -i "s/^#\(${locale} UTF-8\)/\1/" /etc/locale.gen
+grep -qx "${locale} UTF-8" /etc/locale.gen || echo "${locale} UTF-8" >> /etc/locale.gen
+locale-gen
+printf 'LANG=%s\n' "$locale" > /etc/locale.conf
+printf 'KEYMAP=%s\n' "$keymap" > /etc/vconsole.conf
+
+printf '%s\n' "$hostname" > /etc/hostname
+printf '127.0.0.1\tlocalhost\n::1\t\tlocalhost\n127.0.1.1\t%s.localdomain\t%s\n' "$hostname" "$hostname" > /etc/hosts
+
+useradd --create-home --groups wheel --shell /bin/bash "$username"
+
+sudoers=/etc/sudoers.d/10-lukearch
+{
+  if [[ "$admin" == "root" ]]; then
+    echo 'Defaults:%wheel rootpw'
+  fi
+  echo '%wheel ALL=(ALL:ALL) ALL'
+} > "$sudoers"
+chmod 0440 "$sudoers"
+visudo -cf "$sudoers"
+
+if [[ "$arch" == "x86_64" ]]; then ucode="microcode "; else ucode=""; fi
+if [[ "$encrypt" == "yes" ]]; then crypt="sd-encrypt "; else crypt=""; fi
+# No autodetect hook: it reads /sys, which arch-chroot does not provide, so it
+# would leave the storage drivers out of the initramfs.
+sed -i "s/^HOOKS=.*/HOOKS=(base systemd ${ucode}modconf kms keyboard sd-vconsole block ${crypt}filesystems fsck)/" /etc/mkinitcpio.conf
+mkinitcpio -P
+
+for keyring in archlinux archlinuxarm; do
+  if [[ -f "/usr/share/pacman/keyrings/${keyring}.gpg" ]]; then
+    pacman-key --populate "$keyring"
+  fi
+done
+
+ALL_kver=""
+default_image=""
+. "/etc/mkinitcpio.d/${kernel}.preset"
+kernel_file="${ALL_kver:-}"
+[[ -f "$kernel_file" ]] || kernel_file="/boot/vmlinuz-${kernel}"
+[[ -f "$kernel_file" ]] || kernel_file="/boot/Image"
+initramfs_file="${default_image:-}"
+[[ -f "$initramfs_file" ]] || initramfs_file="/boot/initramfs-${kernel}.img"
+if [[ ! -f "$kernel_file" || ! -f "$initramfs_file" ]]; then
+  echo "Kernel or initramfs not found in /boot" >&2
+  exit 1
+fi
+
+bootctl --esp-path=/boot install || bootctl --esp-path=/boot --no-variables install
+mkdir -p /boot/loader/entries
+cat > /boot/loader/loader.conf <<LOADER
+default lukearch.conf
+timeout 3
+LOADER
+cat > /boot/loader/entries/lukearch.conf <<ENTRY
+title   Lukearch
+linux   /${kernel_file#/boot/}
+initrd  /${initramfs_file#/boot/}
+options ${cmdline}
+ENTRY
+
+systemctl enable NetworkManager.service nftables.service sddm.service bluetooth.service cups.socket fstrim.timer systemd-boot-update.service
+
+mkdir -p /etc/sddm.conf.d
+if [[ "$autologin" == "yes" ]]; then
+  cat > /etc/sddm.conf.d/autologin.conf <<AUTO
+[Autologin]
+Relogin=false
+Session=${session}
+User=${username}
+AUTO
+fi
+CHROOT
+}
+
+set_passwords() {
+  log "Setting passwords"
+  printf '%s:%s\n' "$USERNAME" "$USER_PASSWORD" | arch-chroot "$TARGET" chpasswd
+  if [[ "$ADMIN" == "root" ]]; then
+    printf 'root:%s\n' "$ADMIN_PASSWORD" | arch-chroot "$TARGET" chpasswd
+  else
+    arch-chroot "$TARGET" passwd --lock root >/dev/null 2>&1 || true
+  fi
+  unset LUKS_PASSWORD ADMIN_PASSWORD USER_PASSWORD
+}
+
+save_settings_to_target() {
+  print_settings > "$TARGET/root/lukearch-install.conf"
+  chmod 0600 "$TARGET/root/lukearch-install.conf"
+}
+
+finish_install() {
+  sync
+  umount -R "$TARGET"
+  if [[ "$ENCRYPT" == "yes" ]]; then
+    cryptsetup close cryptroot
+  fi
+  log "Installation complete."
+  echo "Remove the install media (eject the ISO or unplug the USB drive) before rebooting."
+  if [[ "$INTERACTIVE" == "yes" ]]; then
+    echo "Press Enter to reboot, or Ctrl-C to stay in the live session."
+    read -r _ < /dev/tty
+    systemctl reboot
+  fi
+  exit 0
+}
+
+cleanup_after_exit() {
+  local status=$?
+  trap - EXIT
+  if (( status != 0 )); then
+    echo "Installation failed (exit status $status). See $LOG_FILE" >&2
+  fi
+  umount -R "$TARGET" 2>/dev/null || true
+  if [[ "$ENCRYPT" == "yes" && -e /dev/mapper/cryptroot ]]; then
+    cryptsetup close cryptroot 2>/dev/null || true
+  fi
+}
+
+welcome() {
+  ui_msg "Welcome to Lukearch.
+
+This installer copies the live system to a disk, so the installed system keeps its changes and boots without the install media.
+
+The recommended settings are already chosen. Change anything you need, then choose Install. Nothing is erased until you confirm the summary."
+}
+
+guided_menu() {
+  local choice
+  while true; do
+    choice="$(ui_menu "" "$APP_TITLE" "Recommended settings are selected. Change anything you need, then choose Install." \
+      install "Install with these settings" \
+      disk "Disk and partitions: $(storage_summary)" \
+      filesystem "Root filesystem: $FILESYSTEM" \
+      encryption "Encryption: $ENCRYPT" \
+      swap "Swap: $SWAP" \
+      timezone "Timezone: $TIMEZONE" \
+      locale "Language (locale): $LOCALE" \
+      keymap "Keyboard layout: $KEYMAP" \
+      hostname "Hostname: $HOSTNAME" \
+      username "Username: $USERNAME" \
+      admin "Sudo asks for: $(admin_label)" \
+      session "Desktop session: $SESSION" \
+      autologin "Autologin: $AUTOLOGIN" \
+      extra "Extra packages: ${EXTRA_PACKAGES:-none}" \
+      save "Save these settings to a file" \
+      quit "Quit without installing")" || break
+
+    case "$choice" in
+      install) run_install || true ;;
+      disk) choose_storage || true ;;
+      filesystem)
+        pick_field FILESYSTEM "Root filesystem" "Choose the root filesystem." \
+          ext4 "Ext4: stable and simple (recommended)" \
+          btrfs "Btrfs: @ and @home subvolumes, zstd compression"
+        ;;
+      encryption)
+        pick_field ENCRYPT "Encryption" "Encrypt the root partition?" \
+          no "No encryption (recommended)" \
+          yes "LUKS2 encryption; you enter a passphrase at boot"
+        ;;
+      swap)
+        pick_field SWAP "Swap" "Choose the swap type." \
+          zram "Compressed RAM swap (recommended)" \
+          none "No swap"
+        ;;
+      timezone) edit_field TIMEZONE "Timezone" "Enter a timezone such as Australia/Sydney." ;;
+      locale) edit_field LOCALE "Language" "Enter a UTF-8 locale such as en_US.UTF-8." ;;
+      keymap) edit_field KEYMAP "Keyboard layout" "Enter a console keymap such as us, uk, or de." ;;
+      hostname) edit_field HOSTNAME "Hostname" "Enter the computer's name." ;;
+      username) edit_field USERNAME "Username" "Enter the name of the main account." ;;
+      admin)
+        pick_field ADMIN "Sudo password" "Which password does sudo ask for?" \
+          root "The administrator (root) password (recommended)" \
+          user "The user's own password"
+        ;;
+      session)
+        pick_field SESSION "Desktop session" "Choose the Plasma session." \
+          plasma "Plasma on Wayland" \
+          plasmax11 "Plasma on X11 (needed on virtual ARM machines)"
+        ;;
+      autologin)
+        pick_field AUTOLOGIN "Autologin" "Log in automatically at boot?" \
+          no "Ask for the password (recommended)" \
+          yes "Log in automatically"
+        ;;
+      extra) edit_field EXTRA_PACKAGES "Extra packages" "Enter package names separated by spaces, or leave empty." ;;
+      save) save_settings_interactive ;;
+      quit) break ;;
+    esac
+  done
+  echo "No changes were made."
+}
+
+choose_storage() {
+  local choice
+  choice="$(ui_menu "$INSTALL_MODE" "Disk" "How should the disk be used?" \
+    wipe "Erase a whole disk and create the partitions (recommended)" \
+    existing "Install onto existing partitions and keep the EFI partition (dual boot)")" || return 0
+  if [[ "$choice" == "wipe" ]]; then
+    choose_disk
+  else
+    choose_partitions
+  fi
+}
+
+choose_disk() {
+  local name type size model choice
+  local items=()
+  while read -r name type size model; do
+    if [[ "$type" != "disk" ]] || on_running_disk "$name"; then
+      continue
+    fi
+    items+=("$name" "$size ${model:-disk}")
+  done < <(lsblk -dpnlo NAME,TYPE,SIZE,MODEL)
+  if (( ${#items[@]} == 0 )); then
+    ui_msg "No disks are available to erase."
+    return 0
+  fi
+  choice="$(ui_menu "$DISK" "Disk to erase" "Everything on the chosen disk will be deleted." "${items[@]}")" || return 0
+  apply_field DISK "$choice" && apply_field INSTALL_MODE "wipe" || true
+}
+
+choose_partitions() {
+  local name type size fstype esp root
+  local items=()
+  while read -r name type size fstype; do
+    if [[ "$type" == "part" ]]; then
+      items+=("$name" "$size ${fstype:-no filesystem}")
+    fi
+  done < <(lsblk -pnlo NAME,TYPE,SIZE,FSTYPE)
+  if (( ${#items[@]} == 0 )); then
+    ui_msg "No partitions were found."
+    return 0
+  fi
+  esp="$(ui_menu "$ESP_PART" "EFI partition" "Choose the existing FAT32 EFI partition. It is kept and not formatted." "${items[@]}")" || return 0
+  root="$(ui_menu "$ROOT_PART" "Root partition" "Choose the partition to install onto. It will be formatted and its data deleted." "${items[@]}")" || return 0
+  apply_field ESP_PART "$esp" && apply_field ROOT_PART "$root" && apply_field INSTALL_MODE "existing" || true
+}
+
+pick_field() { # field title text tag description...
+  local field="$1" title="$2" text="$3" choice
+  shift 3
+  choice="$(ui_menu "${!field}" "$title" "$text" "$@")" || return 0
+  apply_field "$field" "$choice" || true
+}
+
+edit_field() { # field title text
+  local value
+  value="$(ui_input "$2" "$3" "${!1}")" || return 0
+  apply_field "$1" "$value" || true
+}
+
+save_settings_interactive() {
+  local path
+  path="$(ui_input "Save settings" "File to write the settings to:" "/root/lukearch-install.conf")" || return 0
+  if [[ -z "$path" ]]; then
+    return 0
+  fi
+  if print_settings > "$path"; then
+    ui_msg "Settings saved to $path."
+  else
+    ui_msg "Could not write $path."
+  fi
+}
+
+main() {
+  local config_file="" dry_run="no" problems
+  set_defaults
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config)
+        config_file="${2:-}"
+        [[ -n "$config_file" ]] || fail "--config needs a file name"
+        shift 2
+        ;;
+      --dry-run)
+        dry_run="yes"
+        shift
+        ;;
+      --print-config)
+        print_settings
+        exit 0
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        usage >&2
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
+
+  if [[ "$dry_run" == "yes" && -z "$config_file" ]]; then
+    fail "--dry-run needs --config FILE"
+  fi
+
+  if [[ -n "$config_file" ]]; then
+    load_config "$config_file"
+    if [[ "$dry_run" == "yes" ]]; then
+      if ! problems="$(check_settings yes)"; then
+        printf '%s\n' "$problems" >&2
+        fail "the settings in $config_file are not valid"
+      fi
+      describe_plan
+      echo "The settings in $config_file are valid. Nothing was changed."
+      exit 0
+    fi
+    INTERACTIVE="no"
+    run_install || exit 1
+    exit 0
+  fi
+
+  command -v dialog >/dev/null 2>&1 || fail "dialog is required for the guided installer; use --config FILE instead"
+  [[ $EUID -eq 0 ]] || fail "run the installer as root: sudo lukearch-install"
+  INTERACTIVE="yes"
+  welcome
+  guided_menu
+}
+
+main "$@"

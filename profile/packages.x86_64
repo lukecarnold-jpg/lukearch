@@ -5,6 +5,10 @@ amd-ucode
 intel-ucode
 mkinitcpio
 mkinitcpio-archiso
+arch-install-scripts
+archlinux-keyring
+dialog
+cryptsetup
 syslinux
 memtest86+
 memtest86+-efi

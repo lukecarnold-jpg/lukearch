@@ -11,6 +11,9 @@ profile (`profile-aarch64/`) for ARM64 machines with UEFI firmware.
   `lukearch` autologin and a Plasma desktop.
 - The ISO is a hybrid image with an EFI system partition, so it also boots when
   converted to a VirtualBox disk and exported as an OVA.
+- `lukearch-install` installs the ARM64 system to a disk. The default
+  (ext4, no encryption) was installed in VirtualBox and booted to the Plasma X11
+  desktop from its own disk. Encryption and btrfs are not yet tested on ARM64.
 
 ## How the ARM64 image differs from x86_64
 

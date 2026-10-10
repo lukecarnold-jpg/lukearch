@@ -3,6 +3,10 @@ linux-aarch64
 linux-firmware
 mkinitcpio
 mkinitcpio-archiso
+arch-install-scripts
+archlinuxarm-keyring
+dialog
+cryptsetup
 zram-generator
 libinput
 mesa

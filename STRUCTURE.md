@@ -91,8 +91,15 @@ profile-aarch64/
       customize_airootfs.sh
     usr/
       local/
+        bin/
+          lukearch-install
         sbin/
           lukearch-set-admin-password
+      share/
+        applications/
+          lukearch-install.desktop
+        lukearch/
+          install-packages
   efiboot/
     loader/
       entries/
@@ -129,8 +136,15 @@ profile/
       customize_airootfs.sh
     usr/
       local/
+        bin/
+          lukearch-install
         sbin/
           lukearch-set-admin-password
+      share/
+        applications/
+          lukearch-install.desktop
+        lukearch/
+          install-packages
   efiboot/
     loader/
       entries/

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Lukearch
+Comment=Install Lukearch to a disk
+Exec=konsole -e sudo /usr/local/bin/lukearch-install
+Icon=system-software-install
+Terminal=false
+Categories=System;
