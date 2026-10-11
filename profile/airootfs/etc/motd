@@ -1,5 +1,6 @@
 Welcome to Lukearch.
 
 Lukearch is an Arch-based, unofficial live environment for development and testing.
-This image currently targets x86_64 archiso builds.
+This image is the x86_64 build for UEFI and BIOS PCs and virtual machines.
+To install Lukearch to a disk, open Install Lukearch on the desktop.
 See /root/README for quick project context.

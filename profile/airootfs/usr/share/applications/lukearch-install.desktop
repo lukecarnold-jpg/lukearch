@@ -2,7 +2,7 @@
 Type=Application
 Name=Install Lukearch
 Comment=Install Lukearch to a disk
-Exec=konsole -e sudo /usr/local/bin/lukearch-install
+Exec=konsole -e /usr/local/bin/lukearch-install-launcher
 Icon=system-software-install
 Terminal=false
 Categories=System;

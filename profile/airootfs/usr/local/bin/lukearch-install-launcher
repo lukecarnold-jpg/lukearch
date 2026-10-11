@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Runs the installer from the desktop icon.
+#
+# On a fresh live session the lukearch account and the administrator (root)
+# account have no password, and sudo asks for the administrator password. This
+# sets both first, then starts the installer. The window stays open at the end
+# so the result, or an error, can be read.
+set -uo pipefail
+
+pause() {
+  echo
+  read -r -p "Press Enter to close this window. " _ || true
+}
+trap pause EXIT
+
+# Prints root=<state> and lukearch=<state>, where the state is P (set),
+# L (locked), or NP (no password). Allowed without a password on the live image.
+status="$(sudo -n /usr/local/sbin/lukearch-set-admin-password --status 2>/dev/null || true)"
+
+if [[ -n "$status" ]]; then
+  need_login=no
+  need_admin=no
+  if [[ "$status" != *"lukearch=P"* ]]; then
+    need_login=yes
+  fi
+  if [[ "$status" != *"root=P"* ]]; then
+    need_admin=yes
+  fi
+  if [[ "$need_login" == "yes" ]]; then
+    echo "Before installing, choose a password for the lukearch account."
+    sudo /usr/bin/passwd lukearch || exit 1
+    echo
+  fi
+  if [[ "$need_admin" == "yes" ]]; then
+    echo "Choose the administrator password. Sudo asks for it from now on,"
+    echo "including for the installer. Sudo first asks for the lukearch password."
+    sudo /usr/local/sbin/lukearch-set-admin-password || exit 1
+    echo
+  fi
+fi
+
+echo "Starting the installer. Type the administrator password when sudo asks for it."
+sudo /usr/local/bin/lukearch-install

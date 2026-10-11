@@ -13,7 +13,8 @@ profile (`profile-aarch64/`) for ARM64 machines with UEFI firmware.
   converted to a VirtualBox disk and exported as an OVA.
 - `lukearch-install` installs the ARM64 system to a disk. The default
   (ext4, no encryption) was installed in VirtualBox and booted to the Plasma X11
-  desktop from its own disk. Encryption and btrfs are not yet tested on ARM64.
+  desktop from its own disk. btrfs with LUKS2 encryption was also installed and
+  booted through the passphrase prompt to the login screen and the desktop.
 
 ## How the ARM64 image differs from x86_64
 
@@ -28,6 +29,12 @@ profile (`profile-aarch64/`) for ARM64 machines with UEFI firmware.
   expects.
 - **VirtualBox input:** the VM must use a USB tablet and USB keyboard, because
   ARM guests have no PS/2 controller.
+- **Discover:** installed ARM64 systems use Flatpak (Flathub) as Discover's
+  backend instead of PackageKit, which KDE's Discover reports as incomplete on
+  Arch Linux ARM. System packages are updated with pacman.
+- **EFI partition size:** `linux-aarch64` puts `Image`, `Image.gz`, and the
+  device trees in `/boot`, so an install uses about 207 MiB of the EFI
+  partition. In existing-partitions mode the installer requires 300 MiB free.
 
 ## Building
 

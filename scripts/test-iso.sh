@@ -8,6 +8,7 @@ ISO_PATH="${1:-}"
 
 if [[ -z "$ISO_PATH" ]]; then
   # Only x86_64 images; out/ can also hold the aarch64 ISO, which this script cannot boot.
+  # shellcheck disable=SC2012 # ISO names are plain; ls -t sorts by build time.
   ISO_PATH="$(ls -t "$OUT_DIR"/*-x86_64.iso 2>/dev/null | head -n1 || true)"
 fi
 
