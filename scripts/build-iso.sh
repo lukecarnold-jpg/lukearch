@@ -95,6 +95,18 @@ done
 
 mkdir -p "$WORK_DIR" "$OUT_DIR"
 
+# Packages such as xorg-server ship paths that differ only by case, which a
+# case-insensitive filesystem cannot hold.
+case_probe="$(mktemp -d "$WORK_DIR/.case-probe.XXXXXX")"
+touch "$case_probe/a" "$case_probe/A"
+case_files="$(find "$case_probe" -type f | wc -l | tr -d ' ')"
+rm -rf "$case_probe"
+if [[ "$case_files" != "2" ]]; then
+  echo "WORK_DIR is on a case-insensitive filesystem: $WORK_DIR" >&2
+  echo "Use a case-sensitive filesystem for WORK_DIR, for example a Linux filesystem." >&2
+  exit 1
+fi
+
 if [[ $EUID -eq 0 ]]; then
   MKARCHISO=(mkarchiso)
 else

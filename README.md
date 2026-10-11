@@ -10,8 +10,9 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 
 ## Current status
 
-- ✅ Initial x86_64 `archiso` profile scaffold is present under `/profile`.
-- ✅ Build and local QEMU test scripts are included under `/scripts`.
+- ✅ x86_64 `archiso` profile under `/profile`. The ISO builds and boots under
+  UEFI in QEMU to the Plasma desktop; it has not been tested on hardware yet.
+- ✅ Build, QEMU, and VirtualBox test scripts are included under `/scripts`.
 - ✅ The live image provides a lightweight KDE Plasma desktop started by SDDM.
 - ✅ The live environment targets systems with 4 GB of RAM, with zram enabled
   for additional memory headroom.
@@ -19,9 +20,12 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
   sudo administration and default-deny inbound firewall rules.
 - ✅ Keyboard and mouse input use generic libinput drivers, while GPU-specific
   drivers remain optional.
-- ✅ A separate ARM64 profile is available for native Apple M-series
-  virtualization.
-- ⚠️ Native ARM/aarch64 image support is **not implemented yet**.
+- ✅ ARM64 profile under `/profile-aarch64`. The ISO builds on an ARM64 Linux host
+  and boots to the Plasma desktop in VirtualBox on Apple silicon.
+- ⚠️ Booting directly on Apple silicon hardware (outside a VM) is not supported.
+- ✅ Guided installer, `lukearch-install`, on both images. It installs to a disk
+  with the recommended settings, and every setting can be changed or loaded
+  from a settings file. See [Installing to a disk](#installing-to-a-disk).
 
 ## Repository layout
 
@@ -39,6 +43,8 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `profile/airootfs/etc/sddm.conf.d/autologin.conf` - locked live-session account
 - `profile/airootfs/etc/sudoers.d/lukearch` - power-user sudo, which requires the separate administrator password
 - `profile/airootfs/usr/local/sbin/lukearch-set-admin-password` - one-time setup for the administrator password
+- `profile/airootfs/usr/local/bin/lukearch-install` - guided installer and settings-file installer (identical in both profiles)
+- `profile/airootfs/usr/share/lukearch/install-packages` - packages installed onto the target system
 - `profile/packages.x86_64` - generic input and baseline graphics packages
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
 - `DEV_HIST.md` - dated development history and validation notes
@@ -51,6 +57,7 @@ Every repository change must update both this file and
 [`DEV_HIST.md`](DEV_HIST.md). macOS `.DS_Store` files are ignored. The CI workflow enforces this requirement for
 commits and pull requests.
 Each push must include both files, because the check compares each push on its own.
+CI also lints `lukearch-install` with shellcheck and checks that both profile copies match.
 
 ## Build instructions (x86_64 host)
 
@@ -79,6 +86,12 @@ paths that differ only by case (for example `usr/lib/Xorg.wrap` and
 `usr/lib/xorg/`). On macOS's default case-insensitive APFS volume, or any
 case-insensitive mount, the build fails with "not overwriting dir with file".
 Use a Linux filesystem or a case-sensitive volume for `WORK_DIR`.
+`build-iso.sh` checks this before building and stops with an error otherwise.
+
+Both profiles set `DisableDownloadTimeout` in their `pacman.conf`, so slow
+mirrors don't abort the package download. pacstrap may ask to confirm the
+installation; answer `Y`, or pipe `yes |` into the script when running it
+unattended.
 
 ## Security notes
 
@@ -92,13 +105,15 @@ The live image is designed to be safer by default on older hardware:
   Set it once with `sudo lukearch-set-admin-password`. That command asks for the
   login password first, then refuses to run once the administrator password
   exists, so the login password cannot replace it later.
-- The administrator password also works with `su` and root console login. The
-  root account stays locked until that one-time setup runs.
+- The administrator password also works for root console login. `su` is limited
+  to members of `wheel` through `pam_wheel`. The root account stays locked until
+  that one-time setup runs.
 - The one exception is `sudo passwd lukearch`, which `lukearch` can run without
   a password. The sudoers rule is not limited to first run; it only lets the
   account change its own login password.
-- SSH is not installed, and only NetworkManager, SDDM, nftables, and the desktop
-  session are enabled.
+- SSH is not installed. The enabled services are NetworkManager, SDDM, nftables,
+  Bluetooth, and the desktop session. CUPS starts on demand through `cups.socket`
+  and listens only on localhost.
 - nftables blocks unsolicited inbound traffic while allowing established
   connections, DHCP, and ICMP/ICMPv6 needed for normal networking.
 - The live filesystem is ephemeral. It is not a substitute for an installed,
@@ -108,6 +123,79 @@ The live image is designed to be safer by default on older hardware:
 For a persistent installation, enable automatic or regular security updates,
 use full-disk encryption where practical, and avoid reusing credentials from
 other systems.
+
+## Installing to a disk
+
+The live session has an **Install Lukearch** entry in the application menu. It
+runs `sudo lukearch-install` in a terminal. Sudo asks for the administrator
+password, so set it first with `sudo lukearch-set-admin-password` if you have
+not already.
+
+The guided installer starts with the recommended settings selected. Choose
+**Install with these settings** to use them as they are, or change any item
+first:
+
+| Setting | Recommended | Other choices |
+| --- | --- | --- |
+| Disk | Erase a whole disk and create a 1 GiB EFI partition plus a root partition | Use existing partitions (dual boot): keep the EFI partition, format one root partition |
+| Root filesystem | ext4 | btrfs with `@` and `@home` subvolumes, zstd compression |
+| Encryption | None | LUKS2 on the root partition, with a passphrase at boot |
+| Swap | zram (compressed RAM swap) | None |
+| Timezone | Australia/Sydney | Any name from `/usr/share/zoneinfo` |
+| Language | en_US.UTF-8 | Any UTF-8 locale |
+| Keyboard layout | us | Any console keymap |
+| Hostname | lukearch | Any valid hostname |
+| Username | lukearch | Any valid name (not `root`) |
+| Sudo password | Administrator (root) password | The user's own password |
+| Desktop session | Plasma on X11 on ARM, Plasma on Wayland on x86_64 | The other Plasma session |
+| Autologin | Off | On |
+| Extra packages | None | Any packages from the repositories |
+
+The installer always asks for the passwords when it runs. It never stores them.
+Passwords must be at least 8 characters. Before anything is erased, it shows a
+summary and asks you to confirm.
+
+The installer will not offer the disk it is running from, or the disk that holds
+the live medium, so it cannot erase the system it runs on.
+
+### Settings files for power users
+
+Power users can keep the settings in a file:
+
+```bash
+lukearch-install --print-config > install.conf   # the recommended settings
+nano install.conf                                # change what you need
+sudo lukearch-install --config install.conf --dry-run   # check the file; changes nothing
+sudo lukearch-install --config install.conf             # install, asking for passwords
+```
+
+Each line is `KEY=value`. Unknown keys are rejected. Set `CONFIRM_ERASE=yes` to
+skip the typed `ERASE` confirmation for unattended runs. Passwords are read from
+standard input when it is not a terminal, so a script can pipe them in. The
+installer also saves the settings it used to `/root/lukearch-install.conf` on the
+installed system, without the passwords.
+
+The installed system uses systemd-boot. The installer writes the boot entry and
+the systemd-boot update service is enabled, so boot-loader updates are applied
+automatically. Kernel options are fixed by the installer; the kernel package can
+be changed with `KERNEL=` (for example `linux-lts`).
+
+Tested: on ARM64 in a VirtualBox VM, the installer completed with the
+recommended settings, and the installed disk booted from its own EFI partition
+to the SDDM login screen and then the Plasma X11 desktop. It also completed with
+btrfs and LUKS2 encryption, and the encrypted disk asked for its passphrase at
+boot and accepted it. Not yet tested: the existing-partitions mode, the guided
+menus under a terminal session, and the x86_64 installer on hardware.
+
+Limitations:
+
+- UEFI firmware only. BIOS systems are not supported.
+- Secure Boot is not configured.
+- The installer does not resize existing partitions. Use existing partitions
+  mode with unused space that you have already prepared.
+- The installer does not set up RAID, LVM, or swap partitions.
+- Progress and errors are written to `/var/log/lukearch-install.log` on the live
+  system.
 
 ## Hardware drivers
 
@@ -174,11 +262,16 @@ virtualization. Install VirtualBox 7.2 or newer.
    ./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
    ```
 
-The test script creates an ARM platform VM with the `armv8virtual` chipset and
-UEFI firmware. It uses a USB tablet pointer and USB keyboard, because ARM guests
-have no PS/2 controller, so the mouse does not work with PS/2 settings. It refuses to run on non-ARM64 hosts. It replaces any existing VM
-named `Lukearch ARM64`, which is the default `VM_NAME`; override `VM_NAME` to keep
-an existing VM.
+The test script creates an ARM platform VM with the `armv8virtual` chipset, UEFI
+firmware, the `qemuramfb` display, NAT networking, and the ISO on a SATA DVD
+drive. It uses a USB tablet pointer and USB keyboard, because ARM guests have no
+PS/2 controller, so the mouse does not work with PS/2 settings. It refuses to run
+on non-ARM64 hosts.
+
+If a VM with the same name already exists (`Lukearch ARM64` by default), the
+script stops. Set `REPLACE_VM=1` to delete that VM and its disks first, or set
+`VM_NAME` to create another. Set `START_TYPE=headless` to start without a
+window.
 
 The ARM64 profile uses standard UEFI and is intended for VirtualBox ARM64
 guests. The existing x86_64 profile remains the image for Intel and AMD PCs.
@@ -210,6 +303,14 @@ Or provide an explicit ISO path:
 ./scripts/test-iso.sh /absolute/path/to/lukearch.iso
 ```
 
+Without a path, the script picks the newest `*-x86_64.iso` in `out/`. It refuses
+an aarch64 ISO, because `out/` can hold both.
+
+The script boots through UEFI when it finds OVMF firmware (`edk2-ovmf` on Arch
+Linux, or Homebrew's QEMU on macOS), matching the systemd-boot path on modern
+PCs. Set `FIRMWARE=bios` to test the syslinux BIOS path instead. Pass extra QEMU
+options with `QEMU_EXTRA_ARGS`, for example `QEMU_EXTRA_ARGS="-display none"`.
+
 The test boots the KDE Plasma live path with 4096 MB of guest RAM by default.
 This is the supported low-memory path: it does not copy the compressed
 filesystem into RAM, and the live system enables a zram swap device sized to
@@ -227,20 +328,27 @@ On non-x86_64 hosts, this script runs x86_64 emulation and prints a reminder tha
 
 ## ARM and Apple silicon notes
 
-Lukearch does **not** currently produce an Apple-silicon-native image.
-A normal x86_64 `archiso` ISO should not be advertised as natively bootable on Apple silicon.
-
-Practical near-term strategy:
-
-1. Continue building/testing the x86_64 image (including via QEMU/UTM on Apple silicon).
-2. Design a separate aarch64 image profile and boot path.
-3. Validate on generic aarch64 UEFI hardware and Apple silicon-specific targets.
+The ARM64 image targets ARM64 machines with UEFI firmware, and is tested in
+VirtualBox on Apple silicon. It does not boot directly on Apple silicon hardware,
+which needs the Asahi Linux boot path. The x86_64 ISO cannot run natively on Apple
+silicon.
 
 See [`docs/arm-support.md`](docs/arm-support.md) for details.
 
 ## Milestones
 
-1. Keep x86_64 ISO builds reproducible and minimal.
-2. Expand smoke tests and release checks.
-3. Add an aarch64-capable profile and VM test path.
-4. Explore Apple silicon-native boot strategy with clear support boundaries.
+Done:
+
+- x86_64 and ARM64 live images that build and boot to the Plasma desktop
+  (x86_64 in QEMU, ARM64 in VirtualBox).
+- Guided installer with recommended settings and a settings file for power
+  users (`lukearch-install`).
+
+Next:
+
+1. Test the x86_64 image on hardware, starting with the Alienware M14x
+   (NVIDIA/Optimus, Wi-Fi, Bluetooth, audio).
+2. Add automated boot tests and release checks to CI.
+3. Add Secure Boot support to the installer.
+4. Migrate `customize_airootfs.sh` to declarative airootfs files before archiso
+   removes support for it.

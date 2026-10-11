@@ -1,0 +1,10 @@
+NAME="Lukearch"
+PRETTY_NAME="Lukearch (Arch-based, unofficial)"
+ID=lukearch
+ID_LIKE=arch
+ANSI_COLOR="38;2;23;147;209"
+HOME_URL="https://github.com/lukecarnold-jpg/lukearch"
+DOCUMENTATION_URL="https://github.com/lukecarnold-jpg/lukearch/blob/main/README.md"
+SUPPORT_URL="https://github.com/lukecarnold-jpg/lukearch/issues"
+BUG_REPORT_URL="https://github.com/lukecarnold-jpg/lukearch/issues"
+LOGO=archlinux-logo

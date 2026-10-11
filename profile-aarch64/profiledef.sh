@@ -21,4 +21,5 @@ file_permissions=(
   ["/etc/sddm.conf.d/autologin.conf"]="0:0:644"
   ["/etc/sudoers.d/lukearch"]="0:0:440"
   ["/usr/local/sbin/lukearch-set-admin-password"]="0:0:755"
+  ["/usr/local/bin/lukearch-install"]="0:0:755"
 )

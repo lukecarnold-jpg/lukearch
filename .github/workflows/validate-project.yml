@@ -26,6 +26,14 @@ jobs:
           bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
           bash -n scripts/test-virtualbox.sh
           bash -n scripts/update-structure.sh
+          bash -n profile/airootfs/usr/local/bin/lukearch-install
+          bash -n profile-aarch64/airootfs/usr/local/bin/lukearch-install
+
+      - name: Lint the installer
+        run: |
+          set -euo pipefail
+          shellcheck -s bash profile/airootfs/usr/local/bin/lukearch-install
+          cmp profile/airootfs/usr/local/bin/lukearch-install profile-aarch64/airootfs/usr/local/bin/lukearch-install
 
       - name: Validate required files exist
         run: |
@@ -46,7 +54,21 @@ jobs:
             profile/airootfs/usr/local/sbin/lukearch-set-admin-password
             profile-aarch64/airootfs/etc/sudoers.d/lukearch
             profile-aarch64/airootfs/usr/local/sbin/lukearch-set-admin-password
+            profile/airootfs/etc/mkinitcpio.conf.d/archiso.conf
+            profile/airootfs/etc/pam.d/su
+            profile/airootfs/etc/locale.conf
+            profile-aarch64/airootfs/etc/mkinitcpio.conf.d/archiso.conf
+            profile-aarch64/airootfs/etc/udev/rules.d/71-lukearch-framebuffer-seat.rules
+            profile-aarch64/airootfs/etc/pam.d/su
+            profile-aarch64/airootfs/etc/locale.conf
+            profile-aarch64/airootfs/etc/os-release
             profile/airootfs/root/customize_airootfs.sh
+            profile/airootfs/usr/local/bin/lukearch-install
+            profile-aarch64/airootfs/usr/local/bin/lukearch-install
+            profile/airootfs/usr/share/lukearch/install-packages
+            profile-aarch64/airootfs/usr/share/lukearch/install-packages
+            profile/airootfs/usr/share/applications/lukearch-install.desktop
+            profile-aarch64/airootfs/usr/share/applications/lukearch-install.desktop
             profile/airootfs/etc/os-release
             profile/airootfs/etc/hostname
             profile/airootfs/etc/motd
@@ -104,6 +126,37 @@ jobs:
           grep -q 'Power-user administration' DEV_HIST.md
           ! grep -Eq '^(nvidia|xf86-video-amdgpu|xf86-video-intel)$' profile/packages.x86_64
           grep -q 'Hardware drivers' README.md
+
+      - name: Validate installer settings
+        run: |
+          set -euo pipefail
+          for profile in profile profile-aarch64; do
+            installer="$profile/airootfs/usr/local/bin/lukearch-install"
+            packages="$profile/airootfs/usr/share/lukearch/install-packages"
+            if [[ "$profile" == "profile" ]]; then
+              live_packages="profile/packages.x86_64"
+            else
+              live_packages="profile-aarch64/packages.aarch64"
+            fi
+            grep -qx 'DisableDownloadTimeout' "$profile/pacman.conf"
+            grep -q 'systemd.firstboot=off' "$installer"
+            grep -q 'Defaults:%wheel rootpw' "$installer"
+            grep -q 'sd-encrypt' "$installer"
+            grep -q 'LUKS2' "$installer"
+            grep -q -- '--print-config' "$installer"
+            grep -q -- '--dry-run' "$installer"
+            grep -q 'pacstrap -K' "$installer"
+            grep -q 'lukearch-install' "$profile/airootfs/usr/share/applications/lukearch-install.desktop"
+            grep -q 'lukearch-install' "$profile/profiledef.sh"
+            ! grep -qx 'archiso' "$packages"
+            ! grep -qx 'mkinitcpio-archiso' "$packages"
+            for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware; do
+              grep -qx "$pkg" "$packages"
+            done
+            for pkg in arch-install-scripts dialog cryptsetup; do
+              grep -qx "$pkg" "$live_packages"
+            done
+          done
 
       - name: Validate ARM64 VirtualBox profile
         run: |

@@ -5,6 +5,84 @@ Lukearch. Add a new dated entry for every repository change, and update
 `README.md` when the change affects usage, support, build behavior, or project
 status.
 
+## 2026-10-11
+
+### Guided installer
+
+- Added `lukearch-install` to both live profiles. The script is identical in both
+  (CI checks this). It runs as a dialog menu, or from a settings file with
+  `--config`.
+- Recommended settings are the defaults: erase a whole disk, ext4, no
+  encryption, zram swap, Australia/Sydney, en_US.UTF-8, US keyboard, hostname
+  `lukearch`, sudo asks for the administrator (root) password, Plasma (Wayland
+  on x86_64, X11 on ARM), no autologin.
+- Power users can change every setting in the menu, or run `--print-config`,
+  edit the file, check it with `--dry-run`, and install with `--config`. Unknown
+  keys are rejected. Passwords are never stored: they are read from the
+  terminal, or from stdin when a script pipes them in.
+- Other options: existing partitions (dual boot, keeping the EFI partition),
+  btrfs with `@` and `@home` subvolumes, LUKS2 root encryption, `KERNEL=`, and
+  extra packages.
+- Safety: the installer never offers the disk it runs from or the live medium,
+  including through LUKS or LVM. It shows the plan and requires a typed `ERASE`
+  unless `CONFIRM_ERASE=yes`.
+- The installed system gets the live system's `su` PAM policy, nftables rules,
+  zram config, and os-release. The installer also writes the systemd-boot entry,
+  the initramfs, and the sudoers rule for the chosen admin password.
+- Live packages: added `arch-install-scripts`, `dialog`, `cryptsetup`, and the
+  keyring for each architecture (`archlinux-keyring` on x86_64,
+  `archlinuxarm-keyring` on ARM64). Added the target package list at
+  `usr/share/lukearch/install-packages` and a desktop entry that runs the
+  installer in a terminal.
+- CI: lints the installer with shellcheck, checks that both copies match, and
+  checks the required files, package lists, and key installer features.
+
+### Installer test: btrfs with LUKS2 on ARM64
+
+- Ran the installer on the ARM64 builder with `FILESYSTEM=btrfs` and
+  `ENCRYPT=yes`. The install completed. The target has `@` and `@home`
+  subvolumes, the `sd-encrypt` hook, and a boot entry with `rd.luks.name` and
+  `rootflags=subvol=@`. The passphrase unlocks the volume.
+- Booted the encrypted disk in VirtualBox. The passphrase prompt accepted the
+  typed passphrase, and the system reached the graphical target with SDDM
+  started. The display stayed on the boot log because this disk did not have the
+  `master-of-seat` udev rule; the rule is copied only from a live image, as in
+  the earlier test.
+- Installer run time was dominated by pacstrap downloads, which slowed to a
+  crawl for about an hour near the end of the transfer.
+
+### Installer CI fix
+
+- CI's shellcheck flagged `A && B || C` constructs in the installer's menu
+  handlers. Rewrote them as `if` blocks; behavior is unchanged.
+- README now notes the installer lint and the profile-copy check.
+
+### Installer test on ARM64
+
+- Ran the installer on the ARM64 builder VM against a blank 24 GB disk with the
+  recommended settings. The install completed. The safety check refused the
+  builder's own system disk.
+- Booting the installed disk in a new VirtualBox VM reached the SDDM login
+  screen (Plasma X11 preselected). Logging in reached the Plasma desktop.
+- Found and fixed two problems during the test:
+  - `autodetect` added no modules to the target's initramfs, because it reads
+    `/sys`, which `arch-chroot` does not provide. The installer now omits
+    `autodetect`, so the image includes the storage drivers.
+  - The ARM64 keyring was not populated on the target. The installer now runs
+    `pacman-key --populate` for `archlinux` and `archlinuxarm` when the keyring
+    exists.
+- The installed disk had no display until it had the `master-of-seat` udev
+  rule. The builder is not a live image, so the installer had no rule to copy.
+  The installer copies the rule when the live image has it. The rebuilt ARM64
+  ISO contains the rule, the installer, the package list, and the ARM64
+  keyring (checked in the squashfs). The installed-from-live boot is not yet
+  tested.
+- The test also surfaced two non-issues: the duplicated lines in the output file
+  were a display artifact (the log has one "Installation complete" line), and the
+  sddm default session on the login screen follows its own rules.
+- Not tested: LUKS2 encryption, btrfs, the existing-partitions mode, the dialog
+  menus in a terminal, the x86_64 installer, and BIOS systems (not supported).
+
 ## 2026-10-10
 
 ### ARM64 VirtualBox pointer and keyboard fixed
@@ -19,6 +97,54 @@ status.
   `controlvm` input did not reach the guest, so this needs a GUI check on the Mac.
 - Added a CI check for the USB pointer setting. The check uses a plain pattern,
   because the first version left the CI run without any steps.
+
+### Project review fixes
+
+Verified by building both ISOs with the repo's own `build-iso.sh` (ARM64 in an
+Arch Linux ARM VM, x86_64 in an emulated Arch container), booting them through
+the updated test scripts, and inspecting the built images.
+
+- **VirtualBox script** (`test-virtualbox.sh`): uses a SATA DVD drive, the
+  `qemuramfb` display, and NAT, matching the verified VM. It no longer deletes an
+  existing VM unless `REPLACE_VM=1`, and accepts `START_TYPE`. Verified: the
+  script boots the ARM64 ISO to the Plasma desktop, and a second run stops
+  instead of replacing the VM.
+- **QEMU script** (`test-iso.sh`): picks only `*-x86_64.iso`, refuses aarch64
+  ISOs, and boots through UEFI when OVMF is present (Arch `edk2-ovmf` or
+  Homebrew), falling back to BIOS. Adds `FIRMWARE` and `QEMU_EXTRA_ARGS`.
+  Verified: it boots the x86_64 ISO under UEFI to the Plasma desktop.
+- **x86_64 X11 fallback:** added `plasma-x11-session`; Wayland stays the default
+  session.
+- **Failed boot unit:** masked `systemd-loop@.service` in both profiles. It tried
+  to attach the boot CD to a loop device and failed. Verified: the failure no
+  longer appears in the x86_64 boot log.
+- **Build robustness:** `build-iso.sh` stops early on a case-insensitive
+  `WORK_DIR`. Both `pacman.conf` files set `DisableDownloadTimeout`. Confirmed
+  that mkinitcpio's autodetect failure is already fixed by the profiles'
+  `archiso.conf`, which leaves out the `autodetect` hook; both builds succeeded
+  without the earlier bind-mount workaround.
+- **ARM64 branding:** added `os-release` and `motd`, so the image identifies as
+  Lukearch.
+- **su:** limited to `wheel` with `pam_wheel`. Root console login still accepts
+  the administrator password.
+- **sudoers:** removed the redundant `Defaults:lukearch !targetpw`.
+- **CUPS:** enabled `cups.socket` instead of `cups.service`, so CUPS starts on
+  demand.
+- **Docs:** README status, security notes, build and test instructions, ARM
+  notes, and milestones updated; `docs/arm-support.md` rewritten for the current
+  ARM64 state.
+- **CI:** the required-files list includes the newer airootfs files.
+- Verified in the built images: the `pam_wheel` rule, the sudoers change, the
+  Lukearch `os-release`, the `systemd-loop` mask, `cups.socket`, and the Plasma
+  X11 session are present in both ISOs.
+- Not changed: `customize_airootfs.sh` is still used. It works in archiso 91, and
+  migrating needs declarative user files and another way to rename the ARM64
+  kernel, so it is left as a separate change.
+- Not done: deleting the merged `fix/admin-sudo-and-arm-vbox` and
+  `copilot/setup-initial-lukearch-repository` branches. The permission system
+  blocked it.
+- Not verified at runtime: `su` restriction and CUPS socket activation, because
+  the live images have no SSH.
 
 ### CI tree check fixed
 

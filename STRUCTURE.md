@@ -70,12 +70,18 @@ profile-aarch64/
       locale.gen
       mkinitcpio.conf.d/
         archiso.conf
+      motd
       nftables.conf
+      os-release
+      pam.d/
+        su
       sddm.conf.d/
         autologin.conf
       sudoers.d/
         lukearch
       systemd/
+        system/
+          systemd-loop@.service
         zram-generator.conf
       udev/
         rules.d/
@@ -85,8 +91,15 @@ profile-aarch64/
       customize_airootfs.sh
     usr/
       local/
+        bin/
+          lukearch-install
         sbin/
           lukearch-set-admin-password
+      share/
+        applications/
+          lukearch-install.desktop
+        lukearch/
+          install-packages
   efiboot/
     loader/
       entries/
@@ -106,6 +119,8 @@ profile/
       motd
       nftables.conf
       os-release
+      pam.d/
+        su
       sddm.conf.d/
         autologin.conf
       sudoers.d/
@@ -114,14 +129,22 @@ profile/
         system/
           multi-user.target.wants/
             NetworkManager.service
+          systemd-loop@.service
         zram-generator.conf
     root/
       README
       customize_airootfs.sh
     usr/
       local/
+        bin/
+          lukearch-install
         sbin/
           lukearch-set-admin-password
+      share/
+        applications/
+          lukearch-install.desktop
+        lukearch/
+          install-packages
   efiboot/
     loader/
       entries/

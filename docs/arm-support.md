@@ -3,42 +3,55 @@
 ## Current status
 
 Lukearch ships an x86_64 archiso profile (`profile/`) and a separate ARM64
-profile (`profile-aarch64/`) for standard ARM64 UEFI guests.
+profile (`profile-aarch64/`) for ARM64 machines with UEFI firmware.
 
-This means:
+- The ARM64 profile builds a live ISO from Arch Linux ARM packages and the
+  `linux-aarch64` kernel.
+- In VirtualBox 7.2 on Apple silicon, the ISO boots through systemd-boot to the
+  `lukearch` autologin and a Plasma desktop.
+- The ISO is a hybrid image with an EFI system partition, so it also boots when
+  converted to a VirtualBox disk and exported as an OVA.
+- `lukearch-install` installs the ARM64 system to a disk. The default
+  (ext4, no encryption) was installed in VirtualBox and booted to the Plasma X11
+  desktop from its own disk. Encryption and btrfs are not yet tested on ARM64.
 
-- The generated ISO is intended for x86_64 boot paths.
-- It should not be treated as an Apple-silicon-native image.
-- It is not yet a true aarch64 live image.
+## How the ARM64 image differs from x86_64
+
+- **Desktop session:** VirtualBox's ARM guest exposes only an EFI framebuffer,
+  and the ALARM kernel doesn't build `simpledrm`, so there is no DRM device and
+  Wayland can't run. The image autologs into Plasma on X11 (`plasmax11`) using
+  `xf86-video-fbdev`.
+- **Seat rule:** a udev rule tags the framebuffer `master-of-seat`, so
+  systemd-logind reports the seat as graphical and SDDM can start.
+- **Kernel name:** `linux-aarch64` installs the kernel as `/boot/Image`;
+  `customize_airootfs.sh` copies it to `vmlinuz-linux-aarch64`, the name archiso
+  expects.
+- **VirtualBox input:** the VM must use a USB tablet and USB keyboard, because
+  ARM guests have no PS/2 controller.
+
+## Building
+
+- ARM64 builds must run on an ARM64 Linux host with a case-sensitive
+  filesystem, such as an Arch Linux ARM VM. `scripts/build-iso.sh` refuses to
+  cross-build.
+- archiso is not in the Arch Linux ARM repositories. Install the
+  architecture-independent `archiso` package from the Arch Linux repositories.
+
+## Testing
+
+On Apple silicon, use VirtualBox 7.2 or newer:
+
+```bash
+./scripts/test-virtualbox.sh /absolute/path/to/lukearch-aarch64.iso
+```
+
+VirtualBox on Apple silicon cannot boot the x86_64 profile.
 
 ## Known limitations
 
-- The ARM64 profile uses Arch Linux ARM repositories and `linux-aarch64`.
-- ARM64 builds must currently run on an ARM64 Linux build host.
-- Apple silicon has unique firmware/boot constraints and may require dedicated workflows (for example Asahi Linux-related paths).
-
-## Practical testing right now
-
-On Apple silicon, use VirtualBox 7.2 or newer and test the ARM64 profile:
-
-- Build `profile-aarch64` on an ARM64 Linux environment.
-- Start the result with `scripts/test-virtualbox.sh`.
-- Confirm KDE, input devices, networking, and sudo administration.
-
-VirtualBox on Apple silicon cannot natively boot the x86_64 profile.
-
-## Candidate ARM targets for future work
-
-1. Generic aarch64 UEFI hardware (servers/dev boards that support standard UEFI boot).
-2. Virtualized aarch64 targets under QEMU/UTM for development iteration.
-3. Apple silicon-specific path, likely separate from generic archiso assumptions.
-
-## Work required for a true aarch64 image
-
-1. Validate ARM64 package availability and archiso compatibility in CI.
-2. Validate ARM64 boot and KDE behavior in VirtualBox on M-series Macs.
-3. Validate on generic aarch64 UEFI hardware.
-4. Document per-target installation and boot caveats.
-
-Lukearch remains **x86_64-first**, with ARM64 VirtualBox support in active
-validation.
+- Booting directly on Apple silicon hardware is not supported. That needs the
+  Asahi Linux boot path, which archiso does not provide.
+- Only VirtualBox has been tested. Generic ARM64 UEFI hardware is untested.
+- Wayland has not been tested on ARM64 hardware with a DRM driver.
+- Boards that boot without UEFI (Raspberry Pi firmware, U-Boot) need
+  board-specific images and are out of scope.
