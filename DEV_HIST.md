@@ -5,6 +5,16 @@ Lukearch. Add a new dated entry for every repository change, and update
 `README.md` when the change affects usage, support, build behavior, or project
 status.
 
+## 2026-10-12
+
+### First CI ISO build
+
+- `build-iso.yml` ran for the first time on pull request #5 and passed. It
+  built `lukearch-2026.10.11-x86_64.iso` (2,155,544,576 bytes, SHA-256
+  `067d3db3318713f10145529007b1b1ffa26aaa291b80e269188756062f342be1`) in
+  13 minutes and uploaded it as the `lukearch-x86_64-iso` artifact.
+- The ISO built in CI has not been booted.
+
 ## 2026-10-11
 
 ### Review fixes: installer, launcher, boot menu, and CI
@@ -137,8 +147,8 @@ CI:
 - New workflow `build-iso.yml` builds the x86_64 ISO in a privileged Arch Linux
   container (the same way it was built locally) on pull requests and pushes to
   `main` that touch the x86_64 profile or build script, or by hand. It uploads
-  the ISO and its checksum as an artifact kept for 7 days. Not yet run on
-  GitHub.
+  the ISO and its checksum as an artifact kept for 7 days. Its first run is
+  recorded under 2026-10-12.
 
 ### Discover on installed systems
 

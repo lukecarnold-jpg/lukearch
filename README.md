@@ -63,8 +63,9 @@ profiles share are identical, and runs the installer's settings checks with
 sample settings files. A second workflow, `build-iso.yml`, builds the x86_64 ISO
 in an Arch Linux container when the x86_64 profile or build script changes (on
 pull requests and pushes to `main`, or when started by hand), and keeps the ISO
-as a downloadable artifact for 7 days. The ARM64 ISO is still built by hand on
-an ARM64 host.
+as a downloadable artifact for 7 days. A build takes about 13 minutes. Download
+the ISO from the run's **Artifacts** section on the Actions tab. The ARM64 ISO
+is still built by hand on an ARM64 host.
 
 ## Build instructions (x86_64 host)
 
