@@ -176,6 +176,12 @@ standard input when it is not a terminal, so a script can pipe them in. The
 installer also saves the settings it used to `/root/lukearch-install.conf` on the
 installed system, without the passwords.
 
+The installed system includes **Discover**, KDE's app store, for installing and
+updating applications through PackageKit and pacman. Discover asks for a password
+through polkit, which for a wheel user is the user's own password, not the sudo
+administrator password. The live session cannot install packages to its read-only
+root, so Discover is only useful after installation.
+
 The installed system uses systemd-boot. The installer writes the boot entry and
 the systemd-boot update service is enabled, so boot-loader updates are applied
 automatically. Kernel options are fixed by the installer; the kernel package can

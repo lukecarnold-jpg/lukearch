@@ -151,7 +151,7 @@ jobs:
             grep -q 'Desktop/lukearch-install.desktop' "$profile/airootfs/root/customize_airootfs.sh"
             ! grep -qx 'archiso' "$packages"
             ! grep -qx 'mkinitcpio-archiso' "$packages"
-            for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware; do
+            for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware discover packagekit-qt6; do
               grep -qx "$pkg" "$packages"
             done
             for pkg in arch-install-scripts dialog cryptsetup; do

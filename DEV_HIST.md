@@ -7,6 +7,18 @@ status.
 
 ## 2026-10-11
 
+### Discover on installed systems
+
+- Added KDE's Discover app store and the PackageKit backend (`packagekit-qt6`)
+  to the installed-system package list in both profiles. The x86_64 list also
+  adds `archlinux-appstream-data` for application names and descriptions.
+- Discover asks for the user's password through polkit. The sudo administrator
+  password is not used for this.
+- CI checks that both installed-system lists include Discover.
+- Not yet verified: whether Discover finds updates and installs through the
+  pacman backend on a booted installed system, and whether ARM64 repositories
+  carry `archlinux-appstream-data`, which the ARM64 list does not add.
+
 ### Installer desktop icon
 
 - The live image now places the **Install Lukearch** launcher on the

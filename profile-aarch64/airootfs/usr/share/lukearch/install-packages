@@ -46,3 +46,5 @@ cups
 print-manager
 firefox
 kate
+discover
+packagekit-qt6
