@@ -3,6 +3,11 @@ set -euo pipefail
 
 useradd --create-home --shell /bin/bash lukearch
 usermod --append --groups wheel lukearch
+
+# Put the installer launcher on the live user's desktop. The file must be
+# executable for Plasma to offer it as a launcher.
+install -d -o lukearch -g lukearch -m 0755 /home/lukearch/Desktop
+install -o lukearch -g lukearch -m 0755 /usr/share/applications/lukearch-install.desktop /home/lukearch/Desktop/lukearch-install.desktop
 passwd --lock lukearch
 passwd --lock root
 

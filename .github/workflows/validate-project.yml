@@ -148,6 +148,7 @@ jobs:
             grep -q 'pacstrap -K' "$installer"
             grep -q 'lukearch-install' "$profile/airootfs/usr/share/applications/lukearch-install.desktop"
             grep -q 'lukearch-install' "$profile/profiledef.sh"
+            grep -q 'Desktop/lukearch-install.desktop' "$profile/airootfs/root/customize_airootfs.sh"
             ! grep -qx 'archiso' "$packages"
             ! grep -qx 'mkinitcpio-archiso' "$packages"
             for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware; do

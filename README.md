@@ -126,8 +126,9 @@ other systems.
 
 ## Installing to a disk
 
-The live session has an **Install Lukearch** entry in the application menu. It
-runs `sudo lukearch-install` in a terminal. Sudo asks for the administrator
+The live session has an **Install Lukearch** icon on the desktop and an entry in
+the application menu. Both run `sudo lukearch-install` in a terminal. Plasma
+may ask you to trust the desktop icon the first time you open it. Sudo asks for the administrator
 password, so set it first with `sudo lukearch-set-admin-password` if you have
 not already.
 

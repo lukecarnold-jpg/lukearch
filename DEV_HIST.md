@@ -7,6 +7,16 @@ status.
 
 ## 2026-10-11
 
+### Installer desktop icon
+
+- The live image now places the **Install Lukearch** launcher on the
+  `lukearch` user's desktop, as well as in the application menu. Both profiles
+  copy it in `customize_airootfs.sh` and mark it executable so Plasma offers it
+  as a launcher.
+- CI checks that the desktop copy is set up in both profiles.
+- Not yet verified on a booted live image: the icon's appearance and whether
+  Plasma asks for trust on first launch.
+
 ### Guided installer
 
 - Added `lukearch-install` to both live profiles. The script is identical in both
