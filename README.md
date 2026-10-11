@@ -180,11 +180,12 @@ the systemd-boot update service is enabled, so boot-loader updates are applied
 automatically. Kernel options are fixed by the installer; the kernel package can
 be changed with `KERNEL=` (for example `linux-lts`).
 
-Tested: the ARM64 path was installed to a blank disk in a VirtualBox VM with the
-recommended settings. The installed disk booted from its own EFI partition to
-the SDDM login screen and then to the Plasma X11 desktop. Not yet tested:
-encryption (LUKS2), btrfs, the existing-partitions mode, the guided menus under
-a terminal session, and the x86_64 installer on hardware.
+Tested: on ARM64 in a VirtualBox VM, the installer completed with the
+recommended settings, and the installed disk booted from its own EFI partition
+to the SDDM login screen and then the Plasma X11 desktop. It also completed with
+btrfs and LUKS2 encryption, and the encrypted disk asked for its passphrase at
+boot and accepted it. Not yet tested: the existing-partitions mode, the guided
+menus under a terminal session, and the x86_64 installer on hardware.
 
 Limitations:
 

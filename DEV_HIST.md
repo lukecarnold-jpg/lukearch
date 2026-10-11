@@ -37,6 +37,20 @@ status.
 - CI: lints the installer with shellcheck, checks that both copies match, and
   checks the required files, package lists, and key installer features.
 
+### Installer test: btrfs with LUKS2 on ARM64
+
+- Ran the installer on the ARM64 builder with `FILESYSTEM=btrfs` and
+  `ENCRYPT=yes`. The install completed. The target has `@` and `@home`
+  subvolumes, the `sd-encrypt` hook, and a boot entry with `rd.luks.name` and
+  `rootflags=subvol=@`. The passphrase unlocks the volume.
+- Booted the encrypted disk in VirtualBox. The passphrase prompt accepted the
+  typed passphrase, and the system reached the graphical target with SDDM
+  started. The display stayed on the boot log because this disk did not have the
+  `master-of-seat` udev rule; the rule is copied only from a live image, as in
+  the earlier test.
+- Installer run time was dominated by pacstrap downloads, which slowed to a
+  crawl for about an hour near the end of the transfer.
+
 ### Installer CI fix
 
 - CI's shellcheck flagged `A && B || C` constructs in the installer's menu
