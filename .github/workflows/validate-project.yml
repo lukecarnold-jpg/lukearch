@@ -26,14 +26,70 @@ jobs:
           bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
           bash -n scripts/test-virtualbox.sh
           bash -n scripts/update-structure.sh
+          bash -n profile/airootfs/root/customize_airootfs.sh
           bash -n profile/airootfs/usr/local/bin/lukearch-install
           bash -n profile-aarch64/airootfs/usr/local/bin/lukearch-install
+          bash -n profile/airootfs/usr/local/bin/lukearch-install-launcher
+          sh -n profile/airootfs/usr/local/sbin/lukearch-set-admin-password
 
-      - name: Lint the installer
+      - name: Lint shell scripts
         run: |
           set -euo pipefail
-          shellcheck -s bash profile/airootfs/usr/local/bin/lukearch-install
-          cmp profile/airootfs/usr/local/bin/lukearch-install profile-aarch64/airootfs/usr/local/bin/lukearch-install
+          shellcheck -s bash scripts/*.sh profile*/profiledef.sh profile*/airootfs/root/customize_airootfs.sh \
+            profile*/airootfs/usr/local/bin/lukearch-install profile*/airootfs/usr/local/bin/lukearch-install-launcher
+          shellcheck -s sh profile*/airootfs/usr/local/sbin/lukearch-set-admin-password
+
+      - name: Check files shared by both profiles are identical
+        run: |
+          set -euo pipefail
+          shared=(
+            etc/hostname
+            etc/locale.conf
+            etc/locale.gen
+            etc/nftables.conf
+            etc/os-release
+            etc/pam.d/su
+            etc/sudoers.d/lukearch
+            etc/systemd/zram-generator.conf
+            usr/local/bin/lukearch-install
+            usr/local/bin/lukearch-install-launcher
+            usr/local/sbin/lukearch-set-admin-password
+            usr/share/applications/lukearch-install.desktop
+          )
+          for file in "${shared[@]}"; do
+            cmp "profile/airootfs/$file" "profile-aarch64/airootfs/$file"
+          done
+
+      - name: Test installer settings handling
+        run: |
+          set -euo pipefail
+          installer=profile/airootfs/usr/local/bin/lukearch-install
+          tmp="$(mktemp -d)"
+          # Runs a dry run that must fail, and checks its output for a message.
+          expect_rejected() { # file message
+            local out
+            if out="$("$installer" --config "$1" --dry-run 2>&1)"; then
+              echo "dry run accepted $1" >&2
+              exit 1
+            fi
+            grep -qF "$2" <<<"$out" || { echo "missing message: $2" >&2; echo "$out" >&2; exit 1; }
+          }
+          "$installer" --print-config > "$tmp/settings.conf"
+          grep -qx 'INSTALL_MODE=wipe' "$tmp/settings.conf"
+          grep -qx 'FILESYSTEM=ext4' "$tmp/settings.conf"
+          # The recommended settings still need a disk.
+          expect_rejected "$tmp/settings.conf" 'Choose the disk to erase.'
+          printf 'NOPE=1\n' > "$tmp/unknown.conf"
+          expect_rejected "$tmp/unknown.conf" 'unknown setting NOPE'
+          sed -e 's/^HOSTNAME=.*/HOSTNAME=-bad/' -e 's/^FILESYSTEM=.*/FILESYSTEM=xfs/' \
+            -e 's/^EXTRA_PACKAGES=.*/EXTRA_PACKAGES=htop;reboot/' "$tmp/settings.conf" > "$tmp/values.conf"
+          expect_rejected "$tmp/values.conf" 'Hostname must be'
+          expect_rejected "$tmp/values.conf" 'Choose ext4 or btrfs.'
+          expect_rejected "$tmp/values.conf" 'Invalid package name: htop;reboot'
+          if "$installer" --dry-run 2>/dev/null; then
+            echo "--dry-run without --config was accepted" >&2
+            exit 1
+          fi
 
       - name: Validate required files exist
         run: |
@@ -65,6 +121,8 @@ jobs:
             profile/airootfs/root/customize_airootfs.sh
             profile/airootfs/usr/local/bin/lukearch-install
             profile-aarch64/airootfs/usr/local/bin/lukearch-install
+            profile/airootfs/usr/local/bin/lukearch-install-launcher
+            profile-aarch64/airootfs/usr/local/bin/lukearch-install-launcher
             profile/airootfs/usr/share/lukearch/install-packages
             profile-aarch64/airootfs/usr/share/lukearch/install-packages
             profile/airootfs/usr/share/applications/lukearch-install.desktop
@@ -146,13 +204,26 @@ jobs:
             grep -q -- '--print-config' "$installer"
             grep -q -- '--dry-run' "$installer"
             grep -q 'pacstrap -K' "$installer"
-            grep -q 'lukearch-install' "$profile/airootfs/usr/share/applications/lukearch-install.desktop"
+            grep -q 'device_in_use' "$installer"
+            grep -q -- '--defaultno' "$installer"
+            grep -qx 'Exec=konsole -e /usr/local/bin/lukearch-install-launcher' "$profile/airootfs/usr/share/applications/lukearch-install.desktop"
+            grep -q 'lukearch-install-launcher"\]="0:0:755"' "$profile/profiledef.sh"
+            grep -qx '%wheel ALL=(root) NOPASSWD: /usr/local/sbin/lukearch-set-admin-password --status' "$profile/airootfs/etc/sudoers.d/lukearch"
             grep -q 'lukearch-install' "$profile/profiledef.sh"
+            grep -q 'Desktop/lukearch-install.desktop' "$profile/airootfs/root/customize_airootfs.sh"
             ! grep -qx 'archiso' "$packages"
             ! grep -qx 'mkinitcpio-archiso' "$packages"
-            for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware; do
+            for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware discover; do
               grep -qx "$pkg" "$packages"
             done
+            # Discover's backend: PackageKit on x86_64, Flatpak on ARM64, where KDE
+            # recommends against PackageKit.
+            if [[ "$profile" == "profile" ]]; then
+              grep -qx 'packagekit-qt6' "$packages"
+            else
+              grep -qx 'flatpak' "$packages"
+              ! grep -qx 'packagekit-qt6' "$packages"
+            fi
             for pkg in arch-install-scripts dialog cryptsetup; do
               grep -qx "$pkg" "$live_packages"
             done

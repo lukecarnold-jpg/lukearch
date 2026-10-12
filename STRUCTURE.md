@@ -33,7 +33,7 @@ flowchart LR
     QEMU["scripts/test-iso.sh<br/>QEMU x86_64"]
     VBOX["scripts/test-virtualbox.sh<br/>VirtualBox ARM64"]
 
-    CI["CI: validate-project.yml<br/>syntax, required files,<br/>config checks, doc rule"]
+    CI["CI: validate-project.yml<br/>syntax, shellcheck, required files,<br/>config checks, doc rule<br/>build-iso.yml: x86_64 ISO build"]
 
     P64 --> BUILD
     PA --> BUILD
@@ -54,6 +54,7 @@ flowchart LR
 ```text
 .github/
   workflows/
+    build-iso.yml
     validate-project.yml
 .gitignore
 DEV_HIST.md
@@ -93,6 +94,7 @@ profile-aarch64/
       local/
         bin/
           lukearch-install
+          lukearch-install-launcher
         sbin/
           lukearch-set-admin-password
       share/
@@ -127,8 +129,6 @@ profile/
         lukearch
       systemd/
         system/
-          multi-user.target.wants/
-            NetworkManager.service
           systemd-loop@.service
         zram-generator.conf
     root/
@@ -138,6 +138,7 @@ profile/
       local/
         bin/
           lukearch-install
+          lukearch-install-launcher
         sbin/
           lukearch-set-admin-password
       share/
@@ -193,7 +194,8 @@ flowchart TD
     H --> I
     A --> J["Push or open a PR"]
     J --> K["CI checks"]
-    K --> L{"README.md and<br/>DEV_HIST.md changed?"}
+    K --> K2["shellcheck, shared-file match,<br/>installer settings tests"]
+    K2 --> L{"README.md and<br/>DEV_HIST.md changed?"}
     L -- "no" --> M["CI fails"]
     L -- "yes" --> N["Checks pass"]
 ```
@@ -210,12 +212,23 @@ flowchart TD
     ADMIN["Administrator (root) password<br/>set once by lukearch-set-admin-password"]
     SUDO["sudo for wheel members<br/>Defaults:%wheel rootpw"]
     SETUP["lukearch-set-admin-password<br/>refuses once root has a password"]
+    ICON["Install Lukearch icon<br/>lukearch-install-launcher"]
+    STATUS["lukearch-set-admin-password --status<br/>no password, read-only"]
+    INSTALL["sudo lukearch-install"]
 
     LOGIN -- "asked once, by the setup command" --> SETUP
     SETUP -- "sets" --> ADMIN
     ADMIN -- "required by" --> SUDO
     LOGIN -. "does not authorize sudo" .-> SUDO
+    ICON -- "checks which passwords exist" --> STATUS
+    ICON -- "sets the missing ones" --> LOGIN
+    ICON -- "sets the missing ones" --> SETUP
+    ICON -- "then runs" --> INSTALL
+    SUDO -- "authorizes" --> INSTALL
 ```
+
+The desktop icon walks through the same steps in order, so a fresh live
+session can reach the installer without opening a terminal first.
 
 ## Where things are documented
 
@@ -225,3 +238,4 @@ flowchart TD
 | ARM and Apple silicon status | [`docs/arm-support.md`](docs/arm-support.md) |
 | Change history and validation notes | [`DEV_HIST.md`](DEV_HIST.md) |
 | Automated checks | [`.github/workflows/validate-project.yml`](.github/workflows/validate-project.yml) |
+| x86_64 ISO build in CI | [`.github/workflows/build-iso.yml`](.github/workflows/build-iso.yml) |

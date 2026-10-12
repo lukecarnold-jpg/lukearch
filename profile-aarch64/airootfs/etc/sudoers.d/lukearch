@@ -2,4 +2,5 @@ Defaults:%wheel rootpw
 Defaults!/usr/local/sbin/lukearch-set-admin-password !rootpw
 %wheel ALL=(ALL:ALL) ALL
 %wheel ALL=(root) /usr/local/sbin/lukearch-set-admin-password
+%wheel ALL=(root) NOPASSWD: /usr/local/sbin/lukearch-set-admin-password --status
 lukearch ALL=(root) NOPASSWD: /usr/bin/passwd lukearch

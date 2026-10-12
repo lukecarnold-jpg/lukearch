@@ -58,11 +58,16 @@ set_defaults() {
     x86_64)
       KERNEL="linux"
       SESSION="plasma"
+      # Free space an existing EFI partition needs: kernel and one initramfs.
+      ESP_MIN_FREE_MIB=100
       ;;
     aarch64)
       # Virtual ARM machines have no DRM device, so the desktop uses X11.
       KERNEL="linux-aarch64"
       SESSION="plasmax11"
+      # linux-aarch64 also puts Image.gz and the device trees in /boot (207 MiB
+      # in testing), so an existing EFI partition needs more room.
+      ESP_MIN_FREE_MIB=300
       ;;
     *) fail "unsupported architecture: $ARCH_NAME" ;;
   esac
@@ -323,15 +328,48 @@ ui_msg() {
   fi
 }
 
+# Prints how many rows a menu of N items should show. dialog's automatic list
+# height can show a single row of a short menu, hiding the other choices, so
+# menus pass an explicit height that fits the terminal.
+menu_rows() { # count
+  local rows="$1" max
+  max=$(( $(tput lines 2>/dev/null || echo 24) - 10 ))
+  if (( max < 4 )); then
+    max=4
+  fi
+  if (( rows > max )); then
+    rows=$max
+  fi
+  printf '%s' "$rows"
+}
+
 ui_menu() { # default title text tag item...
-  local default="$1" title="$2" text="$3"
+  local default="$1" title="$2" text="$3" opts=()
   shift 3
   if [[ -n "$default" ]]; then
-    dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
-      --default-item "$default" --menu "$text" 0 0 0 "$@"
+    opts=(--default-item "$default")
+  fi
+  dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
+    "${opts[@]}" --menu "$text" 0 0 "$(menu_rows $(( $# / 2 )))" "$@"
+}
+
+# Shows a menu of plain items, for long lists such as keymaps. Prints the choice.
+ui_list() { # default title text item...
+  local default="$1" title="$2" text="$3" opts=()
+  shift 3
+  if [[ -n "$default" ]]; then
+    opts=(--default-item "$default")
+  fi
+  dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
+    "${opts[@]}" --no-items --menu "$text" 0 0 "$(menu_rows $#)" "$@"
+}
+
+# Shows a short message without waiting, for work that takes a while.
+ui_info() {
+  if [[ "$INTERACTIVE" == "yes" ]]; then
+    dialog --backtitle "$APP_TITLE" --infobox "$1" 0 0
   else
-    dialog --clear --stdout --backtitle "$APP_TITLE" --title "$title" \
-      --menu "$text" 0 0 0 "$@"
+    printf '%s\n' "$1" >&2
   fi
 }
 
@@ -340,8 +378,8 @@ ui_input() { # title text default
     --inputbox "$2" 0 0 "$3"
 }
 
-ui_yesno() { # text
-  dialog --clear --backtitle "$APP_TITLE" --yesno "$1" 0 0
+ui_yesno() { # text; No is selected, so pressing Enter does not confirm.
+  dialog --clear --backtitle "$APP_TITLE" --defaultno --yesno "$1" 0 0
 }
 
 # Reads one line from stdin (the terminal, or a pipe for scripted installs).
@@ -358,7 +396,13 @@ read_secret() {
     dialog --clear --stdout --backtitle "$APP_TITLE" --title "$label" \
       --passwordbox "Type the password. Nothing is shown while you type." 0 0
   else
-    IFS= read -r -s -p "$label: " value
+    # Fails when the input ends, so a script that pipes too few lines stops
+    # instead of asking again forever.
+    if ! IFS= read -r -s -p "$label: " value; then
+      echo >&2
+      ui_msg "No more input: $label was not given."
+      return 1
+    fi
     echo >&2
     printf '%s' "$value"
   fi
@@ -402,7 +446,8 @@ describe_plan() {
   if [[ "$INSTALL_MODE" == "wipe" ]]; then
     echo "Erase $DISK and create a 1 GiB EFI partition and a root partition."
   else
-    echo "Format $ROOT_PART as the root filesystem. The EFI partition $ESP_PART is kept."
+    echo "Format $ROOT_PART as the root filesystem. The EFI partition $ESP_PART is kept;"
+    echo "kernel and boot files of an earlier Lukearch or Arch install on it are replaced."
   fi
   echo "Filesystem: $FILESYSTEM    Encryption: $ENCRYPT    Swap: $SWAP"
   echo "Timezone: $TIMEZONE    Language: $LOCALE    Keyboard: $KEYMAP"
@@ -450,17 +495,112 @@ collect_passwords() {
   USER_PASSWORD="$(new_password "Password for $USERNAME")" || return 1
 }
 
-# Validates, asks for passwords and confirmation, then installs.
-run_install() {
+# Validates, checks the machine, and asks for passwords and confirmation.
+# Returns non-zero to go back without changing anything. Callers run
+# install_system only after this succeeds, and never inside an if or || list:
+# bash ignores set -e in a function called from a condition, so a failed step
+# would not stop the install.
+prepare_install() {
   local problems
   if ! problems="$(check_settings yes)"; then
     ui_msg "Fix these settings first:"$'\n\n'"$problems"
     return 1
   fi
   check_environment
+  ui_info "Checking the disk, the network, and the packages. This can take a minute."
+  if ! problems="$(preflight_problems)"; then
+    ui_msg "The installation cannot start yet:"$'\n\n'"$problems"
+    return 1
+  fi
   collect_passwords || return 1
   confirm_install || return 1
-  install_system
+}
+
+# Prints the packages to install onto the target, one per line.
+target_packages() {
+  local line
+  printf '%s\n' base "$KERNEL"
+  while IFS= read -r line; do
+    if [[ -n "$line" && "$line" != \#* ]]; then
+      printf '%s\n' "$line"
+    fi
+  done < "$PACKAGE_LIST"
+  if [[ -n "$EXTRA_PACKAGES" ]]; then
+    # shellcheck disable=SC2086
+    printf '%s\n' $EXTRA_PACKAGES
+  fi
+}
+
+# Succeeds when a disk or partition, or anything on it, is mounted, used as
+# swap, or opened as an encrypted, LVM, or RAID volume.
+device_in_use() {
+  lsblk -nrpo TYPE,MOUNTPOINTS "$1" 2>/dev/null |
+    awk '$1 !~ /^(disk|part)$/ || NF > 1 { found = 1 } END { exit !found }'
+}
+
+# Prints the free space in MiB on a FAT EFI partition.
+esp_free_mib() {
+  local dir free
+  dir="$(mktemp -d)"
+  if ! mount -o ro "$1" "$dir" 2>/dev/null; then
+    rmdir "$dir"
+    return 1
+  fi
+  free="$(df --output=avail -BM "$dir" | tail -n1 | tr -dc '0-9')"
+  umount "$dir"
+  rmdir "$dir"
+  printf '%s' "$free"
+}
+
+# Prints every problem that would stop the install after the disk is erased:
+# a busy disk, a full EFI partition, no network, or a package that does not
+# exist. Returns non-zero when there is a problem. Nothing is changed.
+preflight_problems() {
+  local out="" dev free db pacman_out missing packages=()
+  if [[ "$INSTALL_MODE" == "wipe" ]]; then
+    if device_in_use "$DISK"; then
+      out+="$DISK is in use. Unmount its partitions, turn off swap on it, and close any encrypted volumes on it."$'\n'
+    fi
+  else
+    for dev in "$ESP_PART" "$ROOT_PART"; do
+      if device_in_use "$dev"; then
+        out+="$dev is in use. Unmount it, turn off swap on it, and close any encrypted volume on it."$'\n'
+      fi
+    done
+    if ! device_in_use "$ESP_PART"; then
+      if ! free="$(esp_free_mib "$ESP_PART")"; then
+        out+="$ESP_PART could not be mounted to check its free space."$'\n'
+      elif (( free < ESP_MIN_FREE_MIB )); then
+        out+="$ESP_PART has ${free} MiB free. The kernel and initramfs need ${ESP_MIN_FREE_MIB} MiB."$'\n'
+      fi
+    fi
+  fi
+
+  # Resolve every package against a fresh copy of the package databases. This
+  # checks the network and the package names without touching the live system's
+  # own databases.
+  db="$(mktemp -d)"
+  # pacman downloads as the alpm user, which must be able to enter the folder.
+  chmod 0755 "$db"
+  if ! pacman --dbpath "$db" -Sy >/dev/null 2>&1; then
+    out+="The package mirrors cannot be reached. Connect to the network and try again."$'\n'
+  else
+    mapfile -t packages < <(target_packages)
+    if ! pacman_out="$(pacman --dbpath "$db" --noconfirm -Sp --print-format '%n' "${packages[@]}" 2>&1)"; then
+      missing="$(sed -n 's/^error: target not found: //p' <<<"$pacman_out" | paste -sd ' ' -)"
+      if [[ -n "$missing" ]]; then
+        out+="These packages were not found: $missing"$'\n'
+      else
+        out+="The package list could not be resolved:"$'\n'"$(tail -n 3 <<<"$pacman_out")"$'\n'
+      fi
+    fi
+  fi
+  rm -rf "$db"
+
+  if [[ -n "$out" ]]; then
+    printf '%s' "$out"
+    return 1
+  fi
 }
 
 install_system() {
@@ -481,7 +621,7 @@ prepare_disks() {
   if [[ "$INSTALL_MODE" == "wipe" ]]; then
     log "Erasing $DISK and creating the partitions"
     wipefs --all --force "$DISK" >/dev/null
-    sfdisk --wipe always "$DISK" <<'LAYOUT'
+    sfdisk --wipe always --wipe-partitions always "$DISK" <<'LAYOUT'
 label: gpt
 ,1GiB,U
 ,,L
@@ -495,6 +635,10 @@ LAYOUT
   else
     ESP_DEV="$ESP_PART"
     ROOT_DEV="$ROOT_PART"
+    # Clear old signatures (for example an earlier LUKS header) so blkid sees
+    # only the new filesystem. The EFI partition is left alone.
+    log "Clearing old signatures from $ROOT_DEV"
+    wipefs --all --force "$ROOT_DEV" >/dev/null
   fi
 
   if [[ "$ENCRYPT" == "yes" ]]; then
@@ -525,10 +669,15 @@ LAYOUT
   mkdir -p "$TARGET/boot"
   mount -o umask=0077 "$ESP_DEV" "$TARGET/boot"
 
+  local uuid
   if [[ "$ENCRYPT" == "yes" ]]; then
-    CMDLINE="rd.luks.name=$(blkid -s UUID -o value "$ROOT_DEV")=cryptroot root=/dev/mapper/cryptroot"
+    uuid="$(blkid -s UUID -o value "$ROOT_DEV")"
+    [[ -n "$uuid" ]] || fail "could not read the LUKS UUID of $ROOT_DEV"
+    CMDLINE="rd.luks.name=$uuid=cryptroot root=/dev/mapper/cryptroot"
   else
-    CMDLINE="root=UUID=$(blkid -s UUID -o value "$MAPPER_DEV")"
+    uuid="$(blkid -s UUID -o value "$MAPPER_DEV")"
+    [[ -n "$uuid" ]] || fail "could not read the filesystem UUID of $MAPPER_DEV"
+    CMDLINE="root=UUID=$uuid"
   fi
   CMDLINE+=" rw systemd.firstboot=off"
   if [[ "$FILESYSTEM" == "btrfs" ]]; then
@@ -537,20 +686,16 @@ LAYOUT
 }
 
 install_packages() {
-  local packages=("base" "$KERNEL") line unique=()
-  while IFS= read -r line; do
-    if [[ -z "$line" || "$line" == \#* ]]; then
-      continue
-    fi
-    packages+=("$line")
-  done < "$PACKAGE_LIST"
-  if [[ -n "$EXTRA_PACKAGES" ]]; then
-    # shellcheck disable=SC2206
-    packages+=($EXTRA_PACKAGES)
+  local unique=() overwrite=()
+  mapfile -t unique < <(target_packages | sort -u)
+  if [[ "$INSTALL_MODE" == "existing" ]]; then
+    # A kept EFI partition can hold the kernel files of an earlier install
+    # (Image, dtbs/, initramfs), which pacman would otherwise refuse to replace.
+    # With pacstrap's alternate root, pacman matches paths without the leading /.
+    overwrite=(--overwrite 'boot/*')
   fi
-  mapfile -t unique < <(printf '%s\n' "${packages[@]}" | sort -u)
   log "Installing ${#unique[@]} packages onto $TARGET"
-  pacstrap -K "$TARGET" "${unique[@]}" < <(yes Y)
+  pacstrap -K "$TARGET" "${unique[@]}" "${overwrite[@]}" < <(yes Y)
 }
 
 copy_if_present() { # source destination
@@ -572,6 +717,11 @@ copy_live_settings() {
   fi
   copy_if_present /etc/udev/rules.d/71-lukearch-framebuffer-seat.rules \
     "$TARGET/etc/udev/rules.d/71-lukearch-framebuffer-seat.rules"
+  # Slow mirrors (notably Arch Linux ARM's) otherwise abort downloads with
+  # "Operation too slow"; the live profiles set the same option.
+  if ! grep -qx 'DisableDownloadTimeout' "$TARGET/etc/pacman.conf"; then
+    sed -i '/^\[options\]/a DisableDownloadTimeout' "$TARGET/etc/pacman.conf"
+  fi
   genfstab -U "$TARGET" > "$TARGET/etc/fstab"
 }
 
@@ -610,9 +760,21 @@ visudo -cf "$sudoers"
 
 if [[ "$arch" == "x86_64" ]]; then ucode="microcode "; else ucode=""; fi
 if [[ "$encrypt" == "yes" ]]; then crypt="sd-encrypt "; else crypt=""; fi
-# No autodetect hook: it reads /sys, which arch-chroot does not provide, so it
-# would leave the storage drivers out of the initramfs.
-sed -i "s/^HOOKS=.*/HOOKS=(base systemd ${ucode}modconf kms keyboard sd-vconsole block ${crypt}filesystems fsck)/" /etc/mkinitcpio.conf
+# Arch's default hook order. autodetect keeps only the modules this machine
+# uses; arch-chroot mounts /sys and the target root, so it detects them. On ARM
+# it may add no modules, because linux-aarch64 builds the storage drivers in.
+sed -i "s/^HOOKS=.*/HOOKS=(base systemd autodetect ${ucode}modconf kms keyboard sd-vconsole block ${crypt}filesystems fsck)/" /etc/mkinitcpio.conf
+# Build only the default image. A fallback image would double the space the
+# initramfs takes on the EFI partition, which matters on a shared one.
+preset="/etc/mkinitcpio.d/${kernel}.preset"
+sed -i "s/^PRESETS=.*/PRESETS=('default')/" "$preset"
+ALL_kver=""
+default_image=""
+fallback_image=""
+. "$preset"
+if [[ -n "$fallback_image" ]]; then
+  rm -f "$fallback_image"
+fi
 mkinitcpio -P
 
 for keyring in archlinux archlinuxarm; do
@@ -621,9 +783,6 @@ for keyring in archlinux archlinuxarm; do
   fi
 done
 
-ALL_kver=""
-default_image=""
-. "/etc/mkinitcpio.d/${kernel}.preset"
 kernel_file="${ALL_kver:-}"
 [[ -f "$kernel_file" ]] || kernel_file="/boot/vmlinuz-${kernel}"
 [[ -f "$kernel_file" ]] || kernel_file="/boot/Image"
@@ -648,6 +807,18 @@ options ${cmdline}
 ENTRY
 
 systemctl enable NetworkManager.service nftables.service sddm.service bluetooth.service cups.socket fstrim.timer systemd-boot-update.service
+
+# Preselect the chosen session and user on the login screen. SDDM keeps the
+# last session here and would otherwise pick its own default, which on ARM can
+# be the Wayland session that cannot start without a DRM device.
+if [[ "$session" == "plasmax11" ]]; then
+  session_file=/usr/share/xsessions/plasmax11.desktop
+else
+  session_file=/usr/share/wayland-sessions/plasma.desktop
+fi
+install -d -o sddm -g sddm -m 0750 /var/lib/sddm
+printf '[Last]\nSession=%s\nUser=%s\n' "$session_file" "$username" > /var/lib/sddm/state.conf
+chown sddm:sddm /var/lib/sddm/state.conf
 
 mkdir -p /etc/sddm.conf.d
 if [[ "$autologin" == "yes" ]]; then
@@ -735,7 +906,11 @@ guided_menu() {
       quit "Quit without installing")" || break
 
     case "$choice" in
-      install) run_install || true ;;
+      install)
+        if prepare_install; then
+          install_system
+        fi
+        ;;
       disk) choose_storage || true ;;
       filesystem)
         pick_field FILESYSTEM "Root filesystem" "Choose the root filesystem." \
@@ -752,9 +927,9 @@ guided_menu() {
           zram "Compressed RAM swap (recommended)" \
           none "No swap"
         ;;
-      timezone) edit_field TIMEZONE "Timezone" "Enter a timezone such as Australia/Sydney." ;;
-      locale) edit_field LOCALE "Language" "Enter a UTF-8 locale such as en_US.UTF-8." ;;
-      keymap) edit_field KEYMAP "Keyboard layout" "Enter a console keymap such as us, uk, or de." ;;
+      timezone) choose_timezone ;;
+      locale) choose_locale ;;
+      keymap) choose_keymap ;;
       hostname) edit_field HOSTNAME "Hostname" "Enter the computer's name." ;;
       username) edit_field USERNAME "Username" "Enter the name of the main account." ;;
       admin)
@@ -837,6 +1012,48 @@ pick_field() { # field title text tag description...
   apply_field "$field" "$choice" || true
 }
 
+# Picks a timezone in two steps: the region, then the city. Zones without a
+# region, such as UTC, are chosen directly.
+choose_timezone() {
+  local zones=() regions=() cities=() region city
+  mapfile -t zones < <(timedatectl list-timezones 2>/dev/null)
+  if (( ${#zones[@]} == 0 )); then
+    edit_field TIMEZONE "Timezone" "Enter a timezone such as Australia/Sydney."
+    return
+  fi
+  mapfile -t regions < <(printf '%s\n' "${zones[@]}" | sed 's|/.*||' | sort -u)
+  region="$(ui_list "${TIMEZONE%%/*}" "Timezone" "Choose the region." "${regions[@]}")" || return 0
+  mapfile -t cities < <(printf '%s\n' "${zones[@]}" | sed -n "s|^${region}/||p")
+  if (( ${#cities[@]} == 0 )); then
+    apply_field TIMEZONE "$region" || true
+    return
+  fi
+  city="$(ui_list "${TIMEZONE#*/}" "Timezone" "Choose the city in $region." "${cities[@]}")" || return 0
+  apply_field TIMEZONE "$region/$city" || true
+}
+
+choose_locale() {
+  local locales=() choice
+  mapfile -t locales < <(sed -n 's/ UTF-8$//p' /usr/share/i18n/SUPPORTED 2>/dev/null)
+  if (( ${#locales[@]} == 0 )); then
+    edit_field LOCALE "Language" "Enter a UTF-8 locale such as en_US.UTF-8."
+    return
+  fi
+  choice="$(ui_list "$LOCALE" "Language" "Choose the language and region (locale)." "${locales[@]}")" || return 0
+  apply_field LOCALE "$choice" || true
+}
+
+choose_keymap() {
+  local keymaps=() choice
+  mapfile -t keymaps < <(localectl list-keymaps 2>/dev/null)
+  if (( ${#keymaps[@]} == 0 )); then
+    edit_field KEYMAP "Keyboard layout" "Enter a console keymap such as us, uk, or de."
+    return
+  fi
+  choice="$(ui_list "$KEYMAP" "Keyboard layout" "Choose the console keyboard layout." "${keymaps[@]}")" || return 0
+  apply_field KEYMAP "$choice" || true
+}
+
 edit_field() { # field title text
   local value
   value="$(ui_input "$2" "$3" "${!1}")" || return 0
@@ -901,8 +1118,10 @@ main() {
       exit 0
     fi
     INTERACTIVE="no"
-    run_install || exit 1
-    exit 0
+    if ! prepare_install; then
+      exit 1
+    fi
+    install_system
   fi
 
   command -v dialog >/dev/null 2>&1 || fail "dialog is required for the guided installer; use --config FILE instead"

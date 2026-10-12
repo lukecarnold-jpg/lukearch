@@ -2,4 +2,5 @@ Welcome to Lukearch.
 
 Lukearch is an Arch-based, unofficial live environment for development and testing.
 This image is the ARM64 build for UEFI virtual machines such as VirtualBox on Apple silicon.
+To install Lukearch to a disk, open Install Lukearch on the desktop.
 See /root/README for quick project context.

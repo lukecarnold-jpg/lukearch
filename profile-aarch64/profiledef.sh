@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034 # mkarchiso sources this file and reads these variables.
 
 iso_name="lukearch-aarch64"
 iso_label="LUKEARCH_ARM_$(date +%Y%m)"
@@ -22,4 +23,5 @@ file_permissions=(
   ["/etc/sudoers.d/lukearch"]="0:0:440"
   ["/usr/local/sbin/lukearch-set-admin-password"]="0:0:755"
   ["/usr/local/bin/lukearch-install"]="0:0:755"
+  ["/usr/local/bin/lukearch-install-launcher"]="0:0:755"
 )

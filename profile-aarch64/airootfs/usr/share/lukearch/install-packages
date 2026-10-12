@@ -46,3 +46,7 @@ cups
 print-manager
 firefox
 kate
+discover
+# KDE recommends against PackageKit on Arch Linux ARM; Discover installs
+# applications from Flathub instead. Use pacman for system packages.
+flatpak

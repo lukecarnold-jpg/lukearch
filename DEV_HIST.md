@@ -5,7 +5,172 @@ Lukearch. Add a new dated entry for every repository change, and update
 `README.md` when the change affects usage, support, build behavior, or project
 status.
 
+## 2026-10-12
+
+### First CI ISO build
+
+- `build-iso.yml` ran for the first time on pull request #5 and passed. It
+  built `lukearch-2026.10.11-x86_64.iso` (2,155,544,576 bytes, SHA-256
+  `067d3db3318713f10145529007b1b1ffa26aaa291b80e269188756062f342be1`) in
+  13 minutes and uploaded it as the `lukearch-x86_64-iso` artifact.
+- The ISO built in CI has not been booted.
+
 ## 2026-10-11
+
+### Review fixes: installer, launcher, boot menu, and CI
+
+Installer (`lukearch-install`):
+
+- **Failures did not stop the install.** `run_install` was called as
+  `run_install || exit 1` and `run_install || true`, and bash ignores `set -e`
+  in a function called from a condition. A failed `mount` would have let
+  pacstrap install into the live system's `/mnt`, and a failed step could still
+  end with "Installation complete". Validation is now `prepare_install`, and
+  `install_system` runs as a plain statement after it succeeds. Tested by making
+  `mkfs.ext4` fail: the install stopped, reported the failure, and left nothing
+  mounted.
+- **Password prompts looped forever when input ended.** `read_secret` returned
+  success with an empty value at end of input, so a script that piped too few
+  lines spun on "must be at least 8 characters". It now fails with "No more
+  input".
+- **Checks before erasing.** Before asking for passwords, the installer refuses
+  a target that is mounted, used as swap, or open as an encrypted, LVM, or RAID
+  volume. In existing-partitions mode it requires free space on the EFI
+  partition: 100 MiB on x86_64 and 300 MiB on ARM64 (an ARM64 install used
+  207 MiB, mostly device trees and `Image.gz`). It resolves every package against a temporary copy of the package
+  databases, which checks the network and catches misspelled extra packages
+  before the disk is touched. The temporary folder is made readable, because
+  pacman 7 downloads as the `alpm` user.
+- **Confirmation defaults to No** in the guided installer, so pressing Enter no
+  longer erases the disk.
+- **autodetect restored.** The earlier note that `arch-chroot` does not provide
+  `/sys` was wrong: `arch-chroot` mounts `/sys`, and `findmnt -T /` reports the
+  target's filesystem. `lsinitcpio` had shown no `ahci`, `sd_mod`, or `ext4`
+  modules because `linux-aarch64` builds them in. The hooks are now Arch's
+  default order, including `autodetect`.
+- **No fallback initramfs.** Only the default image is built, which halves the
+  initramfs space used on the EFI partition.
+- **Login screen.** SDDM's state file now preselects the chosen session and
+  user, so a manual login on ARM does not land on the Wayland session.
+- **Pick lists.** Timezone (region, then city), language, and keyboard layout
+  are chosen from lists built from `timedatectl list-timezones`,
+  `/usr/share/i18n/SUPPORTED`, and `localectl list-keymaps`, the same sources
+  the validation uses. Each falls back to typing when its list is unavailable.
+- **Existing-partitions reinstall failed.** Installing onto existing partitions
+  with an EFI partition that already held an earlier install's kernel files
+  failed: pacman refused to replace `Image`, `dtbs/`, and the initramfs
+  ("exists in filesystem"). In existing-partitions mode pacstrap now runs with
+  `--overwrite 'boot/*'` (with an alternate root, pacman matches the pattern
+  against paths without the leading `/`; `/boot/*` matched nothing), and the
+  plan says the earlier kernel and boot files
+  are replaced. Other files on the EFI partition, such as Windows Boot Manager,
+  are left alone.
+- **Menus hid choices.** dialog's automatic list height showed a single row of
+  the two-item disk menu, hiding "existing partitions". Menus now pass an
+  explicit height that fits the terminal.
+- A "Checking the disk, the network, and the packages" message shows while the
+  pre-install checks run; before, the screen was blank for several seconds.
+- Partitions are wiped of old signatures (`--wipe-partitions always` in wipe
+  mode, `wipefs` on the root partition in existing-partitions mode), and an
+  empty UUID stops the install instead of writing a broken boot entry.
+- The installed system's `pacman.conf` sets `DisableDownloadTimeout`. Without
+  it, installing a package on the installed ARM64 system failed with "Operation
+  too slow" from `mirror.archlinuxarm.org`.
+
+Discover on ARM64:
+
+- On the installed ARM64 system, Discover showed KDE's warning that PackageKit
+  support for Arch Linux ARM is incomplete, recommending removal of
+  `packagekit-qt6` and Flatpak instead. The ARM64 list now installs `flatpak`
+  (whose package ships the Flathub remote) instead of `packagekit-qt6`. After the
+  swap, Discover listed Flathub applications with icons and no warning. x86_64
+  keeps PackageKit.
+- Discover's "No detected devices" error in a VM comes from the fwupd backend
+  and is harmless.
+- pacstrap's "Refreshing PackageKit" hook fails in the chroot ("The name is not
+  activatable"), because D-Bus is not running there. pacstrap continues and
+  the install is unaffected.
+
+Tests on the ARM64 builder (VirtualBox):
+
+- Preflight: a missing package, a mounted target, and input that ends before
+  the passwords each stopped the installer before the disk was changed.
+- Forced failure: with `mkfs.ext4` replaced by a failing stub, the installer
+  stopped at that step, reported the failure, and left nothing mounted.
+- btrfs with LUKS2: installed, then booted in a separate VM. The `autodetect`
+  initramfs (16.5 MB, with `dm-crypt`) asked for the passphrase, SDDM
+  preselected Plasma (X11) and the user, and login reached the desktop. The
+  seat rule was copied from the live files, and only the default initramfs
+  exists.
+- Existing partitions: kept an EFI partition holding the earlier install and a
+  stand-in Windows Boot Manager file, and installed onto the old LUKS root
+  partition with a small package list. The first run failed on the kernel file
+  conflicts (fixed above). After the fix the install completed: the root was
+  wiped and formatted as ext4, the Windows file was unchanged, and the disk
+  booted to the graphical target with SDDM running.
+- Guided menus, driven in `tmux` with the screen captured at each step: the
+  timezone region and city lists (Australia and Sydney preselected), the keymap
+  and locale lists, both disk modes, the disk list (only the scratch disk, not
+  the builder's system disk), the checking message, the four password prompts,
+  and the summary. Pressing Enter at the summary returned to the menu and left
+  the disk unchanged. Quit printed "No changes were made."
+
+Live image:
+
+- **Desktop launcher.** The icon ran `konsole -e sudo lukearch-install`. On a
+  fresh live session sudo asked for a root password that did not exist, and the
+  window closed at once, hiding the error. It now runs
+  `lukearch-install-launcher`, which sets the `lukearch` and administrator
+  passwords when needed, starts the installer, and keeps the window open.
+- `lukearch-set-admin-password --status` prints whether the root and `lukearch`
+  passwords are set. Sudoers allows exactly that command without a password.
+- **BIOS boot menu.** Added `systemd.firstboot=off` to match the UEFI entries,
+  and a Memtest86+ entry. archiso 91 never copies the EFI build of Memtest86+
+  (it compares the uppercase `X64` architecture name with `x64`), so
+  `memtest86+-efi` was removed from the x86_64 package list.
+- Removed the x86_64 `NetworkManager.service` wants-symlink, which duplicated
+  `systemctl enable` in `customize_airootfs.sh`.
+- Updated the motd on both images and the out-of-date notes in
+  `docs/arm-support.md` and `scripts/build-iso.sh`.
+- The ARM64 mirror has no working HTTPS (its certificate does not match), so it
+  stays on HTTP. The README's security notes now explain what that exposes.
+
+CI:
+
+- shellcheck now lints every shell script, not only the installer. Small fixes
+  in `build-iso.sh`, `test-iso.sh`, and the profiledef files.
+- New step: files both profiles share must be identical. `nftables.conf`
+  differed only in blank lines and is now the same in both.
+- New step: runs the installer's `--print-config` and `--dry-run` with sample
+  settings files, and checks that missing disks, unknown keys, and invalid
+  values are rejected.
+- New workflow `build-iso.yml` builds the x86_64 ISO in a privileged Arch Linux
+  container (the same way it was built locally) on pull requests and pushes to
+  `main` that touch the x86_64 profile or build script, or by hand. It uploads
+  the ISO and its checksum as an artifact kept for 7 days. Its first run is
+  recorded under 2026-10-12.
+
+### Discover on installed systems
+
+- Added KDE's Discover app store and the PackageKit backend (`packagekit-qt6`)
+  to the installed-system package list in both profiles. The x86_64 list also
+  adds `archlinux-appstream-data` for application names and descriptions.
+- Discover asks for the user's password through polkit. The sudo administrator
+  password is not used for this.
+- CI checks that both installed-system lists include Discover.
+- Not yet verified: whether Discover finds updates and installs through the
+  pacman backend on a booted installed system, and whether ARM64 repositories
+  carry `archlinux-appstream-data`, which the ARM64 list does not add.
+
+### Installer desktop icon
+
+- The live image now places the **Install Lukearch** launcher on the
+  `lukearch` user's desktop, as well as in the application menu. Both profiles
+  copy it in `customize_airootfs.sh` and mark it executable so Plasma offers it
+  as a launcher.
+- CI checks that the desktop copy is set up in both profiles.
+- Not yet verified on a booted live image: the icon's appearance and whether
+  Plasma asks for trust on first launch.
 
 ### Guided installer
 

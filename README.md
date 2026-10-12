@@ -44,6 +44,7 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `profile/airootfs/etc/sudoers.d/lukearch` - power-user sudo, which requires the separate administrator password
 - `profile/airootfs/usr/local/sbin/lukearch-set-admin-password` - one-time setup for the administrator password
 - `profile/airootfs/usr/local/bin/lukearch-install` - guided installer and settings-file installer (identical in both profiles)
+- `profile/airootfs/usr/local/bin/lukearch-install-launcher` - runs the installer from the desktop icon, setting the live passwords first when needed
 - `profile/airootfs/usr/share/lukearch/install-packages` - packages installed onto the target system
 - `profile/packages.x86_64` - generic input and baseline graphics packages
 - `docs/arm-support.md` - ARM/Apple-silicon status and roadmap
@@ -57,7 +58,14 @@ Every repository change must update both this file and
 [`DEV_HIST.md`](DEV_HIST.md). macOS `.DS_Store` files are ignored. The CI workflow enforces this requirement for
 commits and pull requests.
 Each push must include both files, because the check compares each push on its own.
-CI also lints `lukearch-install` with shellcheck and checks that both profile copies match.
+CI also lints every shell script with shellcheck, checks that the files both
+profiles share are identical, and runs the installer's settings checks with
+sample settings files. A second workflow, `build-iso.yml`, builds the x86_64 ISO
+in an Arch Linux container when the x86_64 profile or build script changes (on
+pull requests and pushes to `main`, or when started by hand), and keeps the ISO
+as a downloadable artifact for 7 days. A build takes about 13 minutes. Download
+the ISO from the run's **Artifacts** section on the Actions tab. The ARM64 ISO
+is still built by hand on an ARM64 host.
 
 ## Build instructions (x86_64 host)
 
@@ -108,12 +116,19 @@ The live image is designed to be safer by default on older hardware:
 - The administrator password also works for root console login. `su` is limited
   to members of `wheel` through `pam_wheel`. The root account stays locked until
   that one-time setup runs.
-- The one exception is `sudo passwd lukearch`, which `lukearch` can run without
-  a password. The sudoers rule is not limited to first run; it only lets the
-  account change its own login password.
+- Two commands run without a password. `sudo passwd lukearch` lets the account
+  change its own login password; the rule is not limited to first run.
+  `sudo lukearch-set-admin-password --status` only prints whether the root and
+  `lukearch` passwords are set, so the desktop installer launcher knows which
+  to ask for.
 - SSH is not installed. The enabled services are NetworkManager, SDDM, nftables,
   Bluetooth, and the desktop session. CUPS starts on demand through `cups.socket`
   and listens only on localhost.
+- The ARM64 image and ARM64 installs download packages from
+  `mirror.archlinuxarm.org` over HTTP, because that mirror has no working HTTPS.
+  Packages are signed and pacman checks the signatures, but the package
+  databases are not signed, so someone on the network could serve outdated
+  databases and hold back updates.
 - nftables blocks unsolicited inbound traffic while allowing established
   connections, DHCP, and ICMP/ICMPv6 needed for normal networking.
 - The live filesystem is ephemeral. It is not a substitute for an installed,
@@ -126,10 +141,21 @@ other systems.
 
 ## Installing to a disk
 
-The live session has an **Install Lukearch** entry in the application menu. It
-runs `sudo lukearch-install` in a terminal. Sudo asks for the administrator
-password, so set it first with `sudo lukearch-set-admin-password` if you have
-not already.
+The live session has an **Install Lukearch** icon on the desktop and an entry in
+the application menu. Plasma may ask you to trust the desktop icon the first
+time you open it. Both open a terminal that runs `lukearch-install-launcher`:
+
+1. If the `lukearch` account has no password yet, it asks you to choose one
+   (`sudo passwd lukearch`).
+2. If the administrator password is not set yet, it runs
+   `sudo lukearch-set-admin-password`, which asks for the `lukearch` password
+   from step 1 and then the new administrator password.
+3. It runs `sudo lukearch-install`, and sudo asks for the administrator password.
+
+The window stays open when the installer exits, so you can read the result or
+any error. The launcher checks which passwords are set with
+`sudo lukearch-set-admin-password --status`, which only reads them and is
+allowed without a password.
 
 The guided installer starts with the recommended settings selected. Choose
 **Install with these settings** to use them as they are, or change any item
@@ -141,9 +167,9 @@ first:
 | Root filesystem | ext4 | btrfs with `@` and `@home` subvolumes, zstd compression |
 | Encryption | None | LUKS2 on the root partition, with a passphrase at boot |
 | Swap | zram (compressed RAM swap) | None |
-| Timezone | Australia/Sydney | Any name from `/usr/share/zoneinfo` |
-| Language | en_US.UTF-8 | Any UTF-8 locale |
-| Keyboard layout | us | Any console keymap |
+| Timezone | Australia/Sydney | Any timezone, picked by region and then city |
+| Language | en_US.UTF-8 | Any UTF-8 locale, picked from a list |
+| Keyboard layout | us | Any console keymap, picked from a list |
 | Hostname | lukearch | Any valid hostname |
 | Username | lukearch | Any valid name (not `root`) |
 | Sudo password | Administrator (root) password | The user's own password |
@@ -151,9 +177,25 @@ first:
 | Autologin | Off | On |
 | Extra packages | None | Any packages from the repositories |
 
+Before it asks for passwords, the installer checks everything that could stop
+it after the disk is erased, and changes nothing if one fails:
+
+- The target disk or partitions are not mounted, used as swap, or open as an
+  encrypted, LVM, or RAID volume.
+- In existing-partitions mode, the EFI partition has enough free space for the
+  kernel and initramfs: 100 MiB on x86_64, and 300 MiB on ARM64, where
+  `linux-aarch64` also puts `Image.gz` and the device trees in `/boot`. A
+  Windows EFI partition of the common 100 MiB size is too small; enlarge it
+  first.
+- The package mirrors can be reached, and every package (including extra
+  packages) exists. It checks this with a temporary copy of the package
+  databases, so the live system's own databases are not changed.
+
 The installer always asks for the passwords when it runs. It never stores them.
 Passwords must be at least 8 characters. Before anything is erased, it shows a
-summary and asks you to confirm.
+summary and asks you to confirm; **No** is selected, so pressing Enter does not
+erase anything. If any step fails, the installer stops, unmounts the target, and
+reports the failure.
 
 The installer will not offer the disk it is running from, or the disk that holds
 the live medium, so it cannot erase the system it runs on.
@@ -175,17 +217,52 @@ standard input when it is not a terminal, so a script can pipe them in. The
 installer also saves the settings it used to `/root/lukearch-install.conf` on the
 installed system, without the passwords.
 
+The installed system includes **Discover**, KDE's app store:
+
+- On x86_64, Discover installs and updates packages from the Arch repositories
+  through PackageKit and pacman, with `archlinux-appstream-data` for application
+  names and descriptions.
+- On ARM64, Discover installs applications from **Flathub** through Flatpak.
+  KDE's Discover warns that PackageKit on Arch Linux ARM is incomplete and
+  recommends Flatpak instead, and Arch Linux ARM's maintainers recommend pacman
+  for system packages. Use `sudo pacman -Syu` for system updates on ARM64.
+
+Discover asks for a password through polkit, which for a wheel user is the
+user's own password, not the sudo administrator password. In a virtual machine,
+Discover may show "No detected devices" from its firmware-update (fwupd)
+backend; this is harmless. The live session cannot install packages to its
+read-only root, so Discover is only useful after installation.
+
+The installed system's `pacman.conf` sets `DisableDownloadTimeout`, like the live
+profiles, so a slow mirror does not abort downloads with "Operation too slow".
+
 The installed system uses systemd-boot. The installer writes the boot entry and
 the systemd-boot update service is enabled, so boot-loader updates are applied
 automatically. Kernel options are fixed by the installer; the kernel package can
-be changed with `KERNEL=` (for example `linux-lts`).
+be changed with `KERNEL=` (for example `linux-lts`). The initramfs uses Arch's
+default hooks, including `autodetect`, and only the default image is built (no
+fallback image), to keep the space used on the EFI partition small.
 
-Tested: on ARM64 in a VirtualBox VM, the installer completed with the
-recommended settings, and the installed disk booted from its own EFI partition
-to the SDDM login screen and then the Plasma X11 desktop. It also completed with
-btrfs and LUKS2 encryption, and the encrypted disk asked for its passphrase at
-boot and accepted it. Not yet tested: the existing-partitions mode, the guided
-menus under a terminal session, and the x86_64 installer on hardware.
+The login screen preselects the chosen desktop session and user, whether or not
+autologin is on.
+
+Tested on ARM64 in VirtualBox:
+
+- The recommended settings: the installed disk booted from its own EFI
+  partition to the SDDM login screen and the Plasma X11 desktop.
+- btrfs with LUKS2: the disk asked for its passphrase, then reached the login
+  screen (with Plasma X11 and the user preselected) and the desktop. Discover
+  opened and listed Flathub applications.
+- Existing partitions: an EFI partition holding an earlier install and a
+  stand-in Windows Boot Manager file was kept, the Windows file was unchanged,
+  and the installed disk booted.
+- The guided menus in a terminal, from the first screen through the summary.
+  Pressing Enter at the summary went back to the menu without erasing anything.
+- Failure handling: a target in use, a missing package, input that ends before
+  the passwords, and a failing format step all stopped the installer cleanly.
+
+Not yet tested: the desktop launcher on a booted live image (it needs a rebuilt
+ISO), and the x86_64 installer.
 
 Limitations:
 
@@ -231,7 +308,8 @@ tools:
   `btrfs-progs`, and `dosfstools` for common USB and disk formats.
 - **Bluetooth:** `bluez`, `bluez-utils`, and Plasma's `bluedevil` applet, with
   `bluetooth.service` enabled.
-- **Printing:** CUPS with `print-manager`, with `cups.service` enabled.
+- **Printing:** CUPS with `print-manager`. CUPS starts on demand through
+  `cups.socket`.
 - **Power and sensors:** `power-profiles-daemon`, `lm_sensors`, and `fwupd`.
 - **Locale:** `en_US.UTF-8`, with the timezone set to Australia/Sydney. Change
   `/etc/localtime` and `/etc/locale.conf` in the profile's `airootfs/` if you
@@ -239,6 +317,10 @@ tools:
 
 The x86_64 image also includes `intel-media-driver` for Intel video
 acceleration and `vulkan-intel` and `vulkan-nouveau` for the Vulkan drivers.
+
+The x86_64 BIOS boot menu has a **Run Memtest86+ (RAM test)** entry. The UEFI
+menu has none: archiso 91 does not copy the EFI build of Memtest86+ to the ISO,
+so the image leaves out `memtest86+-efi`.
 
 These features are installed and enabled in the images, but Bluetooth, printing,
 and removable media have not been tested on hardware yet.
@@ -348,7 +430,8 @@ Next:
 
 1. Test the x86_64 image on hardware, starting with the Alienware M14x
    (NVIDIA/Optimus, Wi-Fi, Bluetooth, audio).
-2. Add automated boot tests and release checks to CI.
+2. Add automated boot tests and release checks to CI. (CI now builds the
+   x86_64 ISO; it does not boot it yet.)
 3. Add Secure Boot support to the installer.
 4. Migrate `customize_airootfs.sh` to declarative airootfs files before archiso
    removes support for it.

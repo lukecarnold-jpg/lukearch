@@ -63,9 +63,9 @@ if [[ "$ARCH" == "x86_64" && "$(uname -m)" != "x86_64" ]]; then
   cat >&2 <<ERR
 Unsupported host architecture: $(uname -m)
 
-This first-pass Lukearch build script only supports native x86_64 mkarchiso builds.
-For ARM or Apple silicon development, use docs/arm-support.md and build the
-ARM64 profile in an ARM64 Linux environment.
+Building the x86_64 profile needs an x86_64 Linux host (or an x86_64
+container or VM). For ARM64, set ARCH=aarch64 and build on an ARM64 Linux
+host; see docs/arm-support.md.
 ERR
   exit 1
 fi
@@ -78,13 +78,11 @@ ERR
   exit 1
 fi
 
-for dep in mkarchiso; do
-  if ! command -v "$dep" >/dev/null 2>&1; then
-    echo "Missing required dependency: $dep" >&2
-    echo "Install on Arch Linux with: sudo pacman -S --needed archiso" >&2
-    exit 1
-  fi
-done
+if ! command -v mkarchiso >/dev/null 2>&1; then
+  echo "Missing required dependency: mkarchiso" >&2
+  echo "Install on Arch Linux with: sudo pacman -S --needed archiso" >&2
+  exit 1
+fi
 
 for required in "$PROFILE_DIR/profiledef.sh" "$PROFILE_DIR/packages.$ARCH" "$PROFILE_DIR/pacman.conf"; do
   if [[ ! -f "$required" ]]; then

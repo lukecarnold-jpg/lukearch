@@ -48,6 +48,9 @@ cups
 print-manager
 firefox
 kate
+discover
+archlinux-appstream-data
+packagekit-qt6
 intel-media-driver
 vulkan-intel
 vulkan-nouveau
