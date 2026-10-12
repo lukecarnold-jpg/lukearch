@@ -27,6 +27,37 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
   with the recommended settings, and every setting can be changed or loaded
   from a settings file. See [Installing to a disk](#installing-to-a-disk).
 
+## System requirements
+
+The table lists what each image and the installer were tested with. Anything
+not listed as tested has not been checked.
+
+| | x86_64 (Intel and AMD PCs) | ARM64 (VirtualBox on Apple silicon) |
+| --- | --- | --- |
+| Processor | 64-bit x86_64 CPU | 64-bit ARM64 virtual CPU, 4 vCPUs tested |
+| Firmware | UEFI. The live ISO also boots BIOS through syslinux, but the installer needs UEFI | UEFI (VirtualBox EFI firmware) |
+| Memory | 4 GB, the live target. Live zram swap is half of RAM | 4 GB tested |
+| Disk to install to | 24 GB tested. A 1 GiB EFI partition is created, and the rest holds the root filesystem | 24 GB tested. The installed system used about 4.3 GB after install, and the EFI partition used 207 MiB of its 1 GiB |
+| Boot media | USB stick or DVD of at least 4 GB; the ISO is 2.1 GB | Virtual DVD from the 1.8 GB ISO |
+| Network | Needed for the installer, which downloads packages. Wired tested in a VM; Wi-Fi not tested on hardware | NAT networking tested |
+| Graphics | Any GPU. Generic Mesa drivers; Plasma runs on Wayland by default | No GPU. Plasma runs on X11 with the framebuffer driver |
+| Input | USB or PS/2 keyboard and mouse | USB keyboard and USB tablet, because ARM guests have no PS/2 controller |
+| Secure Boot | Not supported; the installer does not set it up | Not used |
+
+Building the images needs a Linux host with enough free disk space for the
+work directory and the ISO, about 10 GB, on a case-sensitive filesystem:
+
+- **x86_64 ISO:** an x86_64 Linux host with `archiso`, or a privileged Arch
+  Linux container. GitHub Actions builds it on every relevant pull request.
+- **ARM64 ISO:** an ARM64 Linux host. `scripts/build-iso.sh` refuses to
+  cross-build.
+- **Testing the ARM64 ISO:** VirtualBox 7.2 or newer on an Apple silicon Mac
+  (M1 or newer). VirtualBox on Apple silicon cannot run the x86_64 ISO.
+
+Not supported: BIOS-only installs, booting Apple silicon hardware directly
+(outside a VM), and boards that need their own firmware, such as Raspberry Pi
+and U-Boot.
+
 ## Repository layout
 
 - `profile/` - archiso profile (x86_64)

@@ -7,6 +7,16 @@ status.
 
 ## 2026-10-12
 
+### System requirements in README
+
+- Added a **System requirements** section to `README.md`. It lists processor,
+  firmware, memory, disk, boot media, network, graphics, input, and Secure Boot
+  for both images, the build hosts, and what is not supported.
+- The figures come from the ARM64 test VMs: 4 GB and 4 vCPUs, a 24 GB target
+  disk, about 4.3 GB used after install (allocated size of the test disk image),
+  and 207 MiB of the 1 GiB EFI partition in use. The ISO sizes come from the
+  built files. The 10 GB build estimate is not measured.
+
 ### First CI ISO build
 
 - `build-iso.yml` ran for the first time on pull request #5 and passed. It
