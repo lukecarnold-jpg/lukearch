@@ -73,6 +73,13 @@ host's mirrorlist.
   or GPT type `C12A7328`) out with `dd`, and checks it for
   `EFI/BOOT/BOOTX64.EFI`. The extraction was checked on synthetic MBR and GPT
   disks.
+- **CI run 8 (commit `b4277f3`).** The EFI partition was copied, the guest
+  booted, and the installer ran. It then failed on `wipefs: /dev/vda: failed to
+  erase vfat magic string ... Operation not permitted`. The guest had hardcoded
+  `DISK=/dev/vda`, but the host attaches the read-only EFI image first, so
+  `/dev/vda` was the EFI image. The guest now picks the first writable disk
+  that is not zram. The installer refused nothing else; the keyring service
+  ran at boot.
 - **x86_64 build broke on a renamed package.** The first CI run of this branch
   failed in pacstrap with `target not found: plasma-x11-session`: the package
   is no longer in the Arch repositories. The x86_64 package lists no longer

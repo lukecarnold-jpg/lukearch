@@ -6,7 +6,6 @@
 set -uo pipefail
 exec > /dev/console 2>&1
 
-DISK=/dev/vda
 PASSWORD=e2e-test-password
 ROOT=/tmp/e2e-root
 
@@ -39,7 +38,11 @@ grep -q '^Server' /etc/pacman.d/mirrorlist || fail "the live mirrorlist has no s
 systemctl start NetworkManager.service || fail "NetworkManager did not start"
 nm-online -q -t 180 || fail "no network connection"
 udevadm settle
-[[ -b "$DISK" ]] || fail "$DISK is missing"
+# The target is the writable blank disk. The host attaches the EFI image
+# read-only and the ISO as a CD-ROM, and the device names depend on attach order.
+DISK="$(lsblk -dnpro NAME,TYPE,RO | awk '$2 == "disk" && $3 == "0" && $1 != "/dev/zram0" { print $1; exit }')"
+[[ -n "$DISK" && -b "$DISK" ]] || fail "no writable target disk"
+echo "LUKEARCH-E2E: target disk $DISK"
 
 lukearch-install --print-config |
   sed -e "s|^DISK=.*|DISK=$DISK|" -e 's|^CONFIRM_ERASE=.*|CONFIRM_ERASE=yes|' > /tmp/e2e.conf
