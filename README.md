@@ -185,7 +185,7 @@ first:
 | Hostname | lukearch | Any valid hostname |
 | Username | lukearch | Any valid name (not `root`) |
 | Sudo password | Administrator (root) password | The user's own password |
-| Desktop session | Plasma on X11 on ARM, Plasma on Wayland on x86_64 | The other Plasma session |
+| Desktop session | Plasma on X11 on ARM, Plasma on Wayland on x86_64 | Plasma on X11 on ARM only: the x86_64 image has no X11 session package |
 | Autologin | Off | On |
 | Extra packages | None | Any packages from the repositories |
 

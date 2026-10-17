@@ -13,7 +13,6 @@ libinput
 xf86-input-libinput
 mesa
 plasma-desktop
-plasma-x11-session
 plasma-nm
 plasma-pa
 sddm

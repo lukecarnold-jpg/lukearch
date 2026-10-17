@@ -205,6 +205,10 @@ field_error() {
       ;;
     SESSION)
       in_list "$value" "plasma plasmax11" || err="Choose plasma (Wayland) or plasmax11 (X11)."
+      # The x86_64 image has no X11 session package, so plasmax11 has no session file there.
+      if [[ "$value" == "plasmax11" && "$ARCH_NAME" == "x86_64" ]]; then
+        err="The X11 session is not in the x86_64 image. Choose plasma (Wayland)."
+      fi
       ;;
     AUTOLOGIN)
       in_list "$value" "yes no" || err="Choose yes or no."

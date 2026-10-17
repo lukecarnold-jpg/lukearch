@@ -47,6 +47,13 @@ host's mirrorlist.
   are uploaded as an artifact.
 - `validate-project.yml` checks the new files, that both profiles enable
   `pacman-init.service`, and that the x86_64 mirrorlist has a server.
+- **x86_64 build broke on a renamed package.** The first CI run of this branch
+  failed in pacstrap with `target not found: plasma-x11-session`: the package
+  is no longer in the Arch repositories. The x86_64 package lists no longer
+  name it. The x86_64 image and installs use the Wayland Plasma session, and
+  the installer rejects the X11 choice on x86_64 (it has no session file there).
+  The ARM64 profile still uses the package and needs its own check, because its
+  repository is different.
 
 ## 2026-10-12
 
