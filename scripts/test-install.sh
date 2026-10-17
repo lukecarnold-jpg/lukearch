@@ -8,7 +8,7 @@
 #      prompt on the serial port.
 #
 # CI runs this after building the ISO. It needs qemu-system-x86_64, qemu-img,
-# OVMF, bsdtar, and blkid, plus KVM for a reasonable run time.
+# OVMF, bsdtar, blkid, and mtools, plus KVM for a reasonable run time.
 #
 #   scripts/test-install.sh /path/to/lukearch-x86_64.iso
 set -euo pipefail
@@ -28,7 +28,7 @@ if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
   exit 1
 fi
 
-for cmd in qemu-system-x86_64 qemu-img bsdtar blkid; do
+for cmd in qemu-system-x86_64 qemu-img bsdtar blkid mcopy mmd mdir; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1
@@ -88,22 +88,51 @@ QEMU=(
   -display none -no-reboot
 )
 
-# Stage 1. The firmware boots the ISO's kernel directly, which keeps the UEFI
-# path the installer requires and lets the kernel command line add the serial
-# console and systemd.run=. The guest script reaches the guest through fw_cfg.
+# Stage 1. The installer needs UEFI, so the firmware must start the live system
+# itself. The ISO's EFI system image (efiboot.img) holds systemd-boot and the
+# kernel. The test copies that image, replaces its boot entry with one that adds
+# the serial console and systemd.run=, and boots that copy first (bootindex=0).
+# The guest script reaches the guest through fw_cfg.
+efi_name="$(bsdtar -tf "$ISO_PATH" | grep -m1 -E '(^|/)efiboot\.img$' || true)"
+if [[ -z "$efi_name" ]]; then
+  echo "The ISO has no EFI system image (efiboot.img)." >&2
+  exit 1
+fi
+bsdtar -xf "$ISO_PATH" -C "$work" "$efi_name"
+efi_img="$work/$efi_name"
+if ! mdir -i "$efi_img" ::/arch/boot/x86_64/vmlinuz-linux >/dev/null 2>&1; then
+  echo "The EFI system image has no live kernel: $efi_name" >&2
+  exit 1
+fi
+
 fw_cfg_name="opt/lukearch/test-install-guest.sh"
 run="/usr/bin/sh -c 'modprobe qemu_fw_cfg && exec bash /sys/firmware/qemu_fw_cfg/by_name/$fw_cfg_name/raw'"
+cat > "$work/loader.conf" <<'LOADER'
+default lukearch-test.conf
+timeout 0
+LOADER
+cat > "$work/lukearch-test.conf" <<ENTRY
+title   Lukearch install test
+linux   /arch/boot/x86_64/vmlinuz-linux
+initrd  /arch/boot/x86_64/initramfs-linux.img
+options archisobasedir=arch archisolabel=$label systemd.firstboot=off console=ttyS0 systemd.run="$run"
+ENTRY
+mmd -i "$efi_img" ::/loader 2>/dev/null || true
+mmd -i "$efi_img" ::/loader/entries 2>/dev/null || true
+mcopy -o -i "$efi_img" "$work/loader.conf" ::/loader/loader.conf
+mcopy -o -i "$efi_img" "$work/lukearch-test.conf" ::/loader/entries/lukearch-test.conf
+
 install_log="$LOG_DIR/install-serial.log"
 echo "Stage 1: installing from $ISO_PATH (serial log: $install_log)" >&2
 timeout "$INSTALL_TIMEOUT" "${QEMU[@]}" \
+  -drive "file=$efi_img,if=none,format=raw,readonly=on,id=esp" \
+  -device "virtio-blk-pci,drive=esp,bootindex=0" \
   -cdrom "$ISO_PATH" \
-  -kernel "$work/arch/boot/x86_64/vmlinuz-linux" \
-  -initrd "$work/arch/boot/x86_64/initramfs-linux.img" \
-  -append "archisobasedir=arch archisolabel=$label systemd.firstboot=off console=ttyS0 systemd.run=\"$run\"" \
   -fw_cfg "name=$fw_cfg_name,file=$GUEST_SCRIPT" \
   -serial "file:$install_log" || true
 if ! grep -q 'LUKEARCH-E2E: INSTALL-OK' "$install_log"; then
-  grep 'LUKEARCH-E2E' "$install_log" >&2 || true
+  # The installer's own messages come before the guest's shutdown, so search the whole log.
+  grep -a -E 'LUKEARCH-E2E|error|needs|not |Fix|Choose' "$install_log" | head -n 40 >&2 || true
   echo "Stage 1 failed. Last lines of the serial log:" >&2
   tail -n 60 "$install_log" >&2
   exit 1
@@ -115,6 +144,8 @@ echo "Stage 1 passed: the installer finished and the installed files check out."
 boot_log="$LOG_DIR/boot-serial.log"
 echo "Stage 2: booting the installed disk (serial log: $boot_log)" >&2
 : > "$boot_log"
+# Fresh firmware variables, so no boot entry from stage 1 is left behind.
+cp "${OVMF_CODE/CODE/VARS}" "$work/vars.fd"
 "${QEMU[@]}" -serial "file:$boot_log" &
 qemu_pid=$!
 booted=no

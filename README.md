@@ -413,6 +413,16 @@ Linux, or Homebrew's QEMU on macOS), matching the systemd-boot path on modern
 PCs. Set `FIRMWARE=bios` to test the syslinux BIOS path instead. Pass extra QEMU
 options with `QEMU_EXTRA_ARGS`, for example `QEMU_EXTRA_ARGS="-display none"`.
 
+`scripts/test-install.sh` tests the installer from a booted live ISO. It boots
+the ISO's own EFI image in QEMU with UEFI, installs onto a blank 24 GB virtual
+disk with the recommended settings, then boots the installed disk and waits for
+SDDM and a login prompt. It needs `qemu-system-x86`, `qemu-img`, `ovmf`,
+`libarchive` (`bsdtar`), `mtools`, and KVM for a reasonable run time:
+
+```bash
+./scripts/test-install.sh /absolute/path/to/lukearch-x86_64.iso
+```
+
 The test boots the KDE Plasma live path with 4096 MB of guest RAM by default.
 This is the supported low-memory path: it does not copy the compressed
 filesystem into RAM, and the live system enables a zram swap device sized to

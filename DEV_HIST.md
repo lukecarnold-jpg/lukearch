@@ -47,6 +47,18 @@ host's mirrorlist.
   are uploaded as an artifact.
 - `validate-project.yml` checks the new files, that both profiles enable
   `pacman-init.service`, and that the x86_64 mirrorlist has a server.
+- **CI run 4 (commit `4a90578`) stopped at the build.** Packages were installed
+  with `pacstrap`, and `plasma-x11-session` was not found (see the next bullet).
+  The install test never ran.
+- **CI run 5 (commit `0ba1a7a`).** The ISO built and uploaded. The install test
+  ran the installer and it refused to start, so nothing was installed. The
+  installer's first environment check requires UEFI (`/sys/firmware/efi`), but
+  the test booted the kernel with `-kernel`, which skips the firmware. The test
+  now boots the ISO's own EFI image, which holds systemd-boot, the kernel, and
+  its initramfs. The test copies that image, replaces its boot entry so it adds
+  `systemd.run=` and the serial console, and boots that copy first
+  (`bootindex=0`). The changed boot entry was checked on a synthetic FAT image,
+  and the test has not yet run in CI.
 - **x86_64 build broke on a renamed package.** The first CI run of this branch
   failed in pacstrap with `target not found: plasma-x11-session`: the package
   is no longer in the Arch repositories. The x86_64 package lists no longer
