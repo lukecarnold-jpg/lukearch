@@ -415,8 +415,9 @@ options with `QEMU_EXTRA_ARGS`, for example `QEMU_EXTRA_ARGS="-display none"`.
 
 `scripts/test-install.sh` tests the installer from a booted live ISO. It boots
 the ISO's EFI system partition in QEMU with UEFI (read from the ISO's partition
-table), installs onto a blank 24 GB virtual
-disk with the recommended settings, then boots the installed disk and waits for
+table), installs onto a blank 24 GB virtual disk with the recommended settings
+(the guest picks the writable disk, not the read-only EFI image), then boots the
+installed disk and waits for
 SDDM and a login prompt. It needs `qemu-system-x86`, `qemu-img`, `ovmf`,
 `sfdisk` (`fdisk` package), `jq`, `mtools`, and KVM for a reasonable run time:
 
