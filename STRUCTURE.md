@@ -33,7 +33,7 @@ flowchart LR
     QEMU["scripts/test-iso.sh<br/>QEMU x86_64"]
     VBOX["scripts/test-virtualbox.sh<br/>VirtualBox ARM64"]
 
-    CI["CI: validate-project.yml<br/>syntax, shellcheck, required files,<br/>config checks, doc rule<br/>build-iso.yml: x86_64 ISO build"]
+    CI["CI: validate-project.yml<br/>syntax, shellcheck, required files,<br/>config checks, doc rule<br/>build-iso.yml: x86_64 ISO build,<br/>then install test in QEMU"]
 
     P64 --> BUILD
     PA --> BUILD
@@ -82,6 +82,7 @@ profile-aarch64/
         lukearch
       systemd/
         system/
+          pacman-init.service
           systemd-loop@.service
         zram-generator.conf
       udev/
@@ -121,6 +122,8 @@ profile/
       motd
       nftables.conf
       os-release
+      pacman.d/
+        mirrorlist
       pam.d/
         su
       sddm.conf.d/
@@ -129,6 +132,7 @@ profile/
         lukearch
       systemd/
         system/
+          pacman-init.service
           systemd-loop@.service
         zram-generator.conf
     root/
@@ -159,6 +163,8 @@ profile/
     syslinux.cfg
 scripts/
   build-iso.sh
+  test-install-guest.sh
+  test-install.sh
   test-iso.sh
   test-virtualbox.sh
   update-structure.sh
@@ -174,7 +180,7 @@ scripts/
 | `profile/efiboot/` and `profile/syslinux/` | UEFI (systemd-boot) and BIOS (syslinux) boot configuration |
 | `profile-aarch64/` | ARM64 archiso profile for VirtualBox on Apple silicon |
 | `profile-aarch64/airootfs/` | Files copied into the ARM64 live root filesystem |
-| `scripts/` | Build, QEMU test, VirtualBox test, and structure generator scripts |
+| `scripts/` | Build, QEMU test, install test, VirtualBox test, and structure generator scripts |
 | `docs/` | Supporting documentation (ARM and Apple silicon status) |
 | `.github/workflows/` | CI validation |
 
@@ -238,4 +244,4 @@ session can reach the installer without opening a terminal first.
 | ARM and Apple silicon status | [`docs/arm-support.md`](docs/arm-support.md) |
 | Change history and validation notes | [`DEV_HIST.md`](DEV_HIST.md) |
 | Automated checks | [`.github/workflows/validate-project.yml`](.github/workflows/validate-project.yml) |
-| x86_64 ISO build in CI | [`.github/workflows/build-iso.yml`](.github/workflows/build-iso.yml) |
+| x86_64 ISO build and install test in CI | [`.github/workflows/build-iso.yml`](.github/workflows/build-iso.yml) |

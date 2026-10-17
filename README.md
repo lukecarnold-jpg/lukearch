@@ -37,9 +37,12 @@ Lukearch is a small **Arch-based, unofficial** Linux distribution project built 
 - `scripts/build-iso.sh` - builds the x86_64 ISO with `mkarchiso`
 - `scripts/test-iso.sh` - boots an ISO in QEMU for local testing
 - `scripts/test-virtualbox.sh` - boots the ARM64 ISO in VirtualBox
+- `scripts/test-install.sh` - installs the x86_64 ISO onto a virtual disk in QEMU and boots the installed disk; `scripts/test-install-guest.sh` is the part that runs inside the live ISO
 - `profile-aarch64/` - ARM64 archiso profile for Apple M-series testing
 - `profile/airootfs/root/customize_airootfs.sh` - enables KDE display and network services
 - `profile/airootfs/etc/nftables.conf` - default-deny inbound firewall policy
+- `profile/airootfs/etc/systemd/system/pacman-init.service` - creates the live image's pacman keyring at boot (both profiles)
+- `profile/airootfs/etc/pacman.d/mirrorlist` - package mirrors for the x86_64 live image and installs
 - `profile/airootfs/etc/sddm.conf.d/autologin.conf` - locked live-session account
 - `profile/airootfs/etc/sudoers.d/lukearch` - power-user sudo, which requires the separate administrator password
 - `profile/airootfs/usr/local/sbin/lukearch-set-admin-password` - one-time setup for the administrator password
@@ -64,8 +67,13 @@ sample settings files. A second workflow, `build-iso.yml`, builds the x86_64 ISO
 in an Arch Linux container when the x86_64 profile or build script changes (on
 pull requests and pushes to `main`, or when started by hand), and keeps the ISO
 as a downloadable artifact for 7 days. A build takes about 13 minutes. Download
-the ISO from the run's **Artifacts** section on the Actions tab. The ARM64 ISO
-is still built by hand on an ARM64 host.
+the ISO from the run's **Artifacts** section on the Actions tab. A second job in
+the same workflow, `install-test`, runs `scripts/test-install.sh` on the built
+ISO: it boots the live image in QEMU with UEFI, installs onto a blank virtual
+disk with the recommended settings, then boots the installed disk and waits for
+SDDM and a login prompt. Its serial logs are kept as the
+`install-test-serial-logs` artifact. The ARM64 ISO is still built by hand on an
+ARM64 host.
 
 ## Build instructions (x86_64 host)
 
@@ -121,6 +129,10 @@ The live image is designed to be safer by default on older hardware:
   `sudo lukearch-set-admin-password --status` only prints whether the root and
   `lukearch` passwords are set, so the desktop installer launcher knows which
   to ask for.
+- mkarchiso builds the image without a pacman keyring, so `pacman-init.service`
+  creates one at each boot, with its own local signing key, and adds the
+  distribution's keys. pacman checks package signatures against it when the
+  installer installs packages.
 - SSH is not installed. The enabled services are NetworkManager, SDDM, nftables,
   Bluetooth, and the desktop session. CUPS starts on demand through `cups.socket`
   and listens only on localhost.
@@ -187,6 +199,9 @@ it after the disk is erased, and changes nothing if one fails:
   `linux-aarch64` also puts `Image.gz` and the device trees in `/boot`. A
   Windows EFI partition of the common 100 MiB size is too small; enlarge it
   first.
+- The live system's pacman keyring is set up, so package signatures can be
+  checked. The live image creates it at boot; if the installer starts first,
+  wait a minute and try again.
 - The package mirrors can be reached, and every package (including extra
   packages) exists. It checks this with a temporary copy of the package
   databases, so the live system's own databases are not changed.
@@ -261,8 +276,13 @@ Tested on ARM64 in VirtualBox:
 - Failure handling: a target in use, a missing package, input that ends before
   the passwords, and a failing format step all stopped the installer cleanly.
 
-Not yet tested: the desktop launcher on a booted live image (it needs a rebuilt
-ISO), and the x86_64 installer.
+The x86_64 installer is tested in CI from the built live ISO (see
+[Development history](#development-history)), with the recommended settings
+only.
+
+Not yet tested: the desktop launcher on a booted live image, and the ARM64
+installer from a booted live ISO (the ARM64 tests above ran on the ARM64 build
+VM).
 
 Limitations:
 
@@ -430,8 +450,9 @@ Next:
 
 1. Test the x86_64 image on hardware, starting with the Alienware M14x
    (NVIDIA/Optimus, Wi-Fi, Bluetooth, audio).
-2. Add automated boot tests and release checks to CI. (CI now builds the
-   x86_64 ISO; it does not boot it yet.)
+2. Add release checks to CI, and extend the automated install test to the
+   other installer settings and to ARM64. (CI now builds the x86_64 ISO,
+   installs it onto a virtual disk, and boots the installed disk.)
 3. Add Secure Boot support to the installer.
 4. Migrate `customize_airootfs.sh` to declarative airootfs files before archiso
    removes support for it.

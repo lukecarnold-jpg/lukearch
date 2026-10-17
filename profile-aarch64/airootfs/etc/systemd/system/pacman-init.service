@@ -1,0 +1,14 @@
+[Unit]
+Description=Initialize the pacman keyring
+# mkarchiso builds the image without a pacman keyring, so each boot creates its
+# own. pacstrap checks package signatures against it during an install.
+After=time-sync.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/pacman-key --init
+ExecStart=/usr/bin/pacman-key --populate
+
+[Install]
+WantedBy=multi-user.target

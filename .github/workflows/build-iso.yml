@@ -1,20 +1,25 @@
 name: Build x86_64 ISO
 
 # Builds the x86_64 live ISO in an Arch Linux container, so package renames and
-# profile mistakes are caught before a release. The ARM64 profile needs an ARM64
-# Linux host and is built by hand (see docs/arm-support.md).
+# profile mistakes are caught before a release, then installs it onto a virtual
+# disk in QEMU and boots the result. The ARM64 profile needs an ARM64 Linux host
+# and is built by hand (see docs/arm-support.md).
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'profile/**'
       - 'scripts/build-iso.sh'
+      - 'scripts/test-install.sh'
+      - 'scripts/test-install-guest.sh'
       - '.github/workflows/build-iso.yml'
   push:
     branches: [main]
     paths:
       - 'profile/**'
       - 'scripts/build-iso.sh'
+      - 'scripts/test-install.sh'
+      - 'scripts/test-install-guest.sh'
       - '.github/workflows/build-iso.yml'
 
 permissions:
@@ -65,3 +70,42 @@ jobs:
             ${{ runner.temp }}/out/SHA256SUMS
           retention-days: 7
           compression-level: 0
+
+  install-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: lukearch-x86_64-iso
+          path: iso
+
+      - name: Install QEMU and OVMF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf libarchive-tools
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install the ISO onto a virtual disk and boot the installed disk
+        run: |
+          set -euo pipefail
+          iso=(iso/*.iso)
+          LOG_DIR="$RUNNER_TEMP/install-test-logs" ./scripts/test-install.sh "${iso[0]}"
+
+      - name: Upload the serial logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-test-serial-logs
+          path: ${{ runner.temp }}/install-test-logs
+          retention-days: 7

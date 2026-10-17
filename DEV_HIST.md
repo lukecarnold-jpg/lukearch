@@ -5,6 +5,49 @@ Lukearch. Add a new dated entry for every repository change, and update
 `README.md` when the change affects usage, support, build behavior, or project
 status.
 
+## 2026-10-17
+
+### Installer blockers on the live ISO: keyring, mirrors, and an install test
+
+A project review found that every installer test so far ran on the ARM64 build
+VM, an ordinary Arch Linux ARM system, never from a booted live ISO. Two
+problems only show up on the live ISO, because mkarchiso installs the image's
+packages with `pacstrap -G -M`: no pacman keyring and no copy of the build
+host's mirrorlist.
+
+- **No pacman keyring.** pacman checks package signatures against the running
+  system's keyring (`/etc/pacman.d/gnupg`), even when pacstrap installs into
+  `/mnt`. The live images had none, so pacstrap would have failed. On ARM64
+  that happens after the disk is erased, because the pre-install check only
+  resolved package names. Both profiles now ship and enable
+  `pacman-init.service`, which runs `pacman-key --init` and
+  `pacman-key --populate` at boot, like the official archiso profile. Each boot
+  gets its own local signing key.
+- **No x86_64 mirrors.** The x86_64 live image had the stock
+  `pacman-mirrorlist` file, with every server commented out, so the installer's
+  pre-install check would have stopped with "The package mirrors cannot be
+  reached", and installed systems would have copied the empty list. The x86_64
+  profile now ships `etc/pacman.d/mirrorlist` with Arch's `geo` and `fastly`
+  mirrors; pacstrap copies it to the installed system. ARM64 is unaffected: Arch
+  Linux ARM's mirrorlist enables `mirror.archlinuxarm.org`.
+- **Pre-install check.** `lukearch-install` now refuses to start, before it asks
+  for passwords or changes a disk, when the keyring holds none of the
+  distribution master keys listed in `/usr/share/pacman/keyrings/*-trusted`.
+  Checked with a stub `pacman-key`: no keyring and a keyring with only the local
+  key are refused; a populated keyring passes.
+- **Install test in CI.** New `scripts/test-install.sh`, run by a new
+  `install-test` job in `build-iso.yml` after the ISO build. It boots the ISO's
+  kernel in QEMU with UEFI (OVMF) and `systemd.run=`, which runs
+  `scripts/test-install-guest.sh` (passed in through QEMU's fw_cfg) instead of
+  the desktop. That script checks that `pacman-init.service` is enabled, that
+  the keyring and mirrorlist are usable, installs onto a blank 24 GB disk with
+  the recommended settings, and checks the installed mirrorlist, keyring, and
+  boot entry. The host then boots the installed disk without the ISO and waits
+  for SDDM and the `lukearch login:` prompt on the serial port. The serial logs
+  are uploaded as an artifact.
+- `validate-project.yml` checks the new files, that both profiles enable
+  `pacman-init.service`, and that the x86_64 mirrorlist has a server.
+
 ## 2026-10-12
 
 ### First CI ISO build

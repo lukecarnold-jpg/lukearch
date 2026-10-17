@@ -14,6 +14,7 @@ passwd --lock root
 systemctl enable NetworkManager.service
 systemctl enable nftables.service
 systemctl enable sddm.service
+systemctl enable pacman-init.service
 
 # Default locale, timezone, and services for the live image
 locale-gen

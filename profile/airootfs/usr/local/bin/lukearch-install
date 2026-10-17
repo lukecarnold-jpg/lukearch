@@ -552,9 +552,26 @@ esp_free_mib() {
   printf '%s' "$free"
 }
 
+# Succeeds when pacman's keyring holds a distribution master key from
+# /usr/share/pacman/keyrings. pacstrap checks package signatures against this
+# keyring, so without it the install would fail after the disk is erased. The
+# live image creates the keyring at boot with pacman-init.service.
+keyring_ready() {
+  local trusted fpr
+  for trusted in /usr/share/pacman/keyrings/*-trusted; do
+    [[ -f "$trusted" ]] || continue
+    fpr="$(grep -m1 -oiE '^[0-9a-f]{40}' "$trusted" || true)"
+    if [[ -n "$fpr" ]] && pacman-key --list-keys "$fpr" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Prints every problem that would stop the install after the disk is erased:
-# a busy disk, a full EFI partition, no network, or a package that does not
-# exist. Returns non-zero when there is a problem. Nothing is changed.
+# a busy disk, a full EFI partition, no package keyring, no network, or a
+# package that does not exist. Returns non-zero when there is a problem.
+# Nothing is changed.
 preflight_problems() {
   local out="" dev free db pacman_out missing packages=()
   if [[ "$INSTALL_MODE" == "wipe" ]]; then
@@ -574,6 +591,10 @@ preflight_problems() {
         out+="$ESP_PART has ${free} MiB free. The kernel and initramfs need ${ESP_MIN_FREE_MIB} MiB."$'\n'
       fi
     fi
+  fi
+
+  if ! keyring_ready; then
+    out+="The package signing keyring is not set up, so package signatures cannot be checked. If the live system has just started, wait a minute and try again. Otherwise run: sudo systemctl restart pacman-init.service"$'\n'
   fi
 
   # Resolve every package against a fresh copy of the package databases. This

@@ -26,6 +26,8 @@ jobs:
           bash -n profile-aarch64/airootfs/root/customize_airootfs.sh
           bash -n scripts/test-virtualbox.sh
           bash -n scripts/update-structure.sh
+          bash -n scripts/test-install.sh
+          bash -n scripts/test-install-guest.sh
           bash -n profile/airootfs/root/customize_airootfs.sh
           bash -n profile/airootfs/usr/local/bin/lukearch-install
           bash -n profile-aarch64/airootfs/usr/local/bin/lukearch-install
@@ -50,6 +52,7 @@ jobs:
             etc/os-release
             etc/pam.d/su
             etc/sudoers.d/lukearch
+            etc/systemd/system/pacman-init.service
             etc/systemd/zram-generator.conf
             usr/local/bin/lukearch-install
             usr/local/bin/lukearch-install-launcher
@@ -136,6 +139,11 @@ jobs:
             scripts/build-iso.sh
             scripts/test-iso.sh
             scripts/test-virtualbox.sh
+            scripts/test-install.sh
+            scripts/test-install-guest.sh
+            profile/airootfs/etc/pacman.d/mirrorlist
+            profile/airootfs/etc/systemd/system/pacman-init.service
+            profile-aarch64/airootfs/etc/systemd/system/pacman-init.service
             README.md
             DEV_HIST.md
             LICENSE
@@ -169,6 +177,12 @@ jobs:
           grep -q 'systemctl enable NetworkManager.service' profile/airootfs/root/customize_airootfs.sh
           grep -q 'systemctl enable nftables.service' profile/airootfs/root/customize_airootfs.sh
           grep -q 'systemctl enable sddm.service' profile/airootfs/root/customize_airootfs.sh
+          # The live images have no pacman keyring or (on x86_64) mirrors unless
+          # these are in place; the installer needs both.
+          for profile in profile profile-aarch64; do
+            grep -qx 'systemctl enable pacman-init.service' "$profile/airootfs/root/customize_airootfs.sh"
+          done
+          grep -q '^Server = https://' profile/airootfs/etc/pacman.d/mirrorlist
           grep -q '%wheel ALL=(ALL:ALL) ALL' profile/airootfs/etc/sudoers.d/lukearch
           grep -q 'NOPASSWD: /usr/bin/passwd lukearch' profile/airootfs/etc/sudoers.d/lukearch
           grep -qx 'Defaults:%wheel rootpw' profile/airootfs/etc/sudoers.d/lukearch
@@ -205,6 +219,7 @@ jobs:
             grep -q -- '--dry-run' "$installer"
             grep -q 'pacstrap -K' "$installer"
             grep -q 'device_in_use' "$installer"
+            grep -q 'keyring_ready' "$installer"
             grep -q -- '--defaultno' "$installer"
             grep -qx 'Exec=konsole -e /usr/local/bin/lukearch-install-launcher' "$profile/airootfs/usr/share/applications/lukearch-install.desktop"
             grep -q 'lukearch-install-launcher"\]="0:0:755"' "$profile/profiledef.sh"
