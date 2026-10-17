@@ -87,6 +87,13 @@ host's mirrorlist.
   the installer rejects the X11 choice on x86_64 (it has no session file there).
   The ARM64 profile still uses the package and needs its own check, because its
   repository is different.
+- **x86_64 install aborted in pacstrap on PackageKit.** The next run got through
+  the disk and the packages, then stopped: the PackageKit pacman hook printed
+  `GDBus.Error ... The name is not activatable`, and pacstrap failed. D-Bus is
+  not running in the install chroot. The x86_64 installed system now uses
+  Flatpak for Discover, as ARM64 already did. The package lists drop
+  `packagekit-qt6` and `archlinux-appstream-data`, and CI checks both profiles
+  for this. The change was not run in CI when this entry was written.
 
 ## 2026-10-12
 

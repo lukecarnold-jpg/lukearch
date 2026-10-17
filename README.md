@@ -234,13 +234,13 @@ installed system, without the passwords.
 
 The installed system includes **Discover**, KDE's app store:
 
-- On x86_64, Discover installs and updates packages from the Arch repositories
-  through PackageKit and pacman, with `archlinux-appstream-data` for application
-  names and descriptions.
-- On ARM64, Discover installs applications from **Flathub** through Flatpak.
-  KDE's Discover warns that PackageKit on Arch Linux ARM is incomplete and
-  recommends Flatpak instead, and Arch Linux ARM's maintainers recommend pacman
-  for system packages. Use `sudo pacman -Syu` for system updates on ARM64.
+- On both images, Discover installs applications from **Flathub** through
+  Flatpak. The installed system does not use PackageKit: its pacman hook needs
+  D-Bus, which is not running during the install, so pacstrap aborted on it. Use
+  `sudo pacman -Syu` for system packages.
+- KDE's Discover warns that PackageKit on Arch Linux ARM is incomplete and
+  recommends Flatpak, and Arch Linux ARM's maintainers recommend pacman for
+  system packages.
 
 Discover asks for a password through polkit, which for a wheel user is the
 user's own password, not the sudo administrator password. In a virtual machine,

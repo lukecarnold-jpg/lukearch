@@ -231,14 +231,11 @@ jobs:
             for pkg in plasma-desktop sddm networkmanager nftables sudo cryptsetup btrfs-progs zram-generator linux-firmware discover; do
               grep -qx "$pkg" "$packages"
             done
-            # Discover's backend: PackageKit on x86_64, Flatpak on ARM64, where KDE
-            # recommends against PackageKit.
-            if [[ "$profile" == "profile" ]]; then
-              grep -qx 'packagekit-qt6' "$packages"
-            else
-              grep -qx 'flatpak' "$packages"
-              ! grep -qx 'packagekit-qt6' "$packages"
-            fi
+            # Discover's backend is Flatpak on both images. PackageKit's pacman hook
+            # needs D-Bus, which is not running in the install chroot.
+            grep -qx 'flatpak' "$packages"
+            ! grep -qx 'packagekit-qt6' "$packages"
+            ! grep -qx 'archlinux-appstream-data' "$packages"
             for pkg in arch-install-scripts dialog cryptsetup; do
               grep -qx "$pkg" "$live_packages"
             done

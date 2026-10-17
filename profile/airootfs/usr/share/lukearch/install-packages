@@ -48,8 +48,10 @@ print-manager
 firefox
 kate
 discover
-archlinux-appstream-data
-packagekit-qt6
+# Discover installs applications from Flathub through Flatpak on both images.
+# PackageKit's pacman hook needs D-Bus, which is not running in the install
+# chroot, so pacstrap aborted on it. Use pacman for system packages.
+flatpak
 intel-media-driver
 vulkan-intel
 vulkan-nouveau
