@@ -873,28 +873,57 @@ save_settings_to_target() {
   chmod 0600 "$TARGET/root/lukearch-install.conf"
 }
 
-# Stops the processes still running inside the target, such as gpg-agent,
-# which pacman-key and mkinitcpio start in the chroot. Those keep /mnt busy.
-# A process is inside the target when its root link points there.
+# Prints the pid of every process that has the target as its root, working
+# directory, or an open file. pacman-key and mkinitcpio start gpg-agent in the
+# chroot, and that process keeps /mnt busy after the install.
+target_users() {
+  local dir pid link
+  for dir in /proc/[0-9]*; do
+    pid="${dir#/proc/}"
+    for link in "$dir/root" "$dir/cwd" "$dir"/fd/*; do
+      case "$(readlink "$link" 2>/dev/null)" in
+        "$TARGET"|"$TARGET"/*)
+          printf '%s\n' "$pid"
+          break
+          ;;
+      esac
+    done
+  done
+}
+
+# Stops the processes that use the target, then waits for them to exit. The
+# installer itself is never stopped.
 stop_target_processes() {
-  local root link pid
-  for root in /proc/[0-9]*/root; do
-    link="$(readlink "$root" 2>/dev/null || true)"
-    case "$link" in
-      "$TARGET"|"$TARGET"/*)
-        pid="${root#/proc/}"
-        pid="${pid%/root}"
-        kill -TERM "$pid" 2>/dev/null || true
-        ;;
-    esac
+  local pid pids
+  pids="$(target_users | grep -v -x "$$" || true)"
+  [[ -n "$pids" ]] || return 0
+  # shellcheck disable=SC2086 # the pids are numbers, one per line.
+  kill -TERM $pids 2>/dev/null || true
+  sleep 2
+  pids="$(target_users | grep -v -x "$$" || true)"
+  for pid in $pids; do
+    kill -KILL "$pid" 2>/dev/null || true
   done
   sleep 1
 }
 
+# Prints what is still using the target, to explain a failed unmount.
+report_target_users() {
+  local pid
+  for pid in $(target_users | grep -v -x "$$" || true); do
+    echo "still in use: pid $pid $(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" >&2
+  done
+}
+
 finish_install() {
   sync
+  # Leave the target, so this shell's working directory does not keep it busy.
+  cd /
   stop_target_processes
-  umount -R "$TARGET"
+  if ! umount -R "$TARGET"; then
+    report_target_users
+    fail "$TARGET is still in use, so the installed system could not be unmounted"
+  fi
   if [[ "$ENCRYPT" == "yes" ]]; then
     cryptsetup close cryptroot
   fi

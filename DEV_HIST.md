@@ -108,6 +108,13 @@ host's mirrorlist.
   chroot) kept /mnt busy. Before unmounting, the installer now stops every
   process whose root is in the target, with SIGTERM and a one-second wait. The
   stop step was tested against a process in a test chroot.
+- **CI run 12 (commit `4d8473b`).** The same `target is busy` failure. The
+  stop step only found processes whose root is in the target, so the holder
+  was something else: a working directory or an open file. The installer now
+  finds every process with the target as its root, working directory, or an
+  open file, stops them with SIGTERM and then SIGKILL, and leaves the target
+  itself first. If the unmount still fails, it prints what is using the target.
+  All three kinds of holder were tested in a test chroot.
 
 ## 2026-10-12
 
