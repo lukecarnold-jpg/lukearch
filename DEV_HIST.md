@@ -94,6 +94,13 @@ host's mirrorlist.
   Flatpak for Discover, as ARM64 already did. The package lists drop
   `packagekit-qt6` and `archlinux-appstream-data`, and CI checks both profiles
   for this. The change was not run in CI when this entry was written.
+- **CI run 10 (commit `2ea2ac5`).** The Flatpak change worked: pacstrap got past
+  the PackageKit hook and resolved 701 packages. The installer then stopped
+  without a visible message. The host's failure output only kept lines that
+  matched `error`, `needs`, `not` and a few other words, so it hid the cause.
+  The guest also discarded the installer's exit status. The guest now reports
+  the status, and the host prints the installer's whole output (without the
+  package list) when stage 1 fails.
 
 ## 2026-10-12
 

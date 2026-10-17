@@ -48,10 +48,10 @@ lukearch-install --print-config |
   sed -e "s|^DISK=.*|DISK=$DISK|" -e 's|^CONFIRM_ERASE=.*|CONFIRM_ERASE=yes|' > /tmp/e2e.conf
 # The recommended settings ask for the administrator password and the user's
 # password, each twice.
-if ! printf '%s\n' "$PASSWORD" "$PASSWORD" "$PASSWORD" "$PASSWORD" |
-  lukearch-install --config /tmp/e2e.conf; then
-  fail "lukearch-install failed"
-fi
+printf '%s\n' "$PASSWORD" "$PASSWORD" "$PASSWORD" "$PASSWORD" |
+  lukearch-install --config /tmp/e2e.conf
+status=$?
+[[ $status -eq 0 ]] || fail "lukearch-install exited with status $status"
 
 mkdir -p "$ROOT"
 mount "${DISK}2" "$ROOT" || fail "cannot mount the installed root partition"

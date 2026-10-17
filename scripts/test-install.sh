@@ -141,10 +141,13 @@ timeout "$INSTALL_TIMEOUT" "${QEMU[@]}" \
   -fw_cfg "name=$fw_cfg_name,file=$GUEST_SCRIPT" \
   -serial "file:$install_log" || true
 if ! grep -q 'LUKEARCH-E2E: INSTALL-OK' "$install_log"; then
-  # The installer's own messages come before the guest's shutdown, so search the whole log.
-  grep -a -E 'LUKEARCH-E2E|error|needs|not |Fix|Choose' "$install_log" | head -n 40 >&2 || true
-  echo "Stage 1 failed. Last lines of the serial log:" >&2
-  tail -n 60 "$install_log" >&2
+  # Print the installer's output: every line from the guest's start to its
+  # failure message, without the long package list, then the end of the log.
+  echo "Stage 1 failed. The installer's output:" >&2
+  sed -n '/LUKEARCH-E2E: guest script started/,/LUKEARCH-E2E: FAIL/p' "$install_log" |
+    grep -a -v -E '^Packages \(' | cut -c1-240 | tail -n 150 >&2 || true
+  echo "End of the serial log:" >&2
+  tail -n 20 "$install_log" >&2
   exit 1
 fi
 echo "Stage 1 passed: the installer finished and the installed files check out." >&2
