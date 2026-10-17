@@ -65,6 +65,14 @@ host's mirrorlist.
   its contents, an `.img` file in the ISO that has `EFI/BOOT/BOOTX64.EFI`, and
   prints the ISO's `.img` files if none matches. The discovery was checked on a
   fake ISO.
+- **CI run 7 (commit `dd326f6`).** The ISO built. The install test found no
+  `.img` file with `EFI/BOOT/BOOTX64.EFI`: the ISO's only `.img` is the
+  initramfs. archiso writes its EFI system image as a partition of the ISO, not
+  as a file in it, so `bsdtar` cannot see it. The script now reads the ISO's
+  partition table with `sfdisk`, copies the EFI system partition (MBR type `ef`
+  or GPT type `C12A7328`) out with `dd`, and checks it for
+  `EFI/BOOT/BOOTX64.EFI`. The extraction was checked on synthetic MBR and GPT
+  disks.
 - **x86_64 build broke on a renamed package.** The first CI run of this branch
   failed in pacstrap with `target not found: plasma-x11-session`: the package
   is no longer in the Arch repositories. The x86_64 package lists no longer

@@ -8,7 +8,7 @@
 #      prompt on the serial port.
 #
 # CI runs this after building the ISO. It needs qemu-system-x86_64, qemu-img,
-# OVMF, bsdtar, blkid, and mtools, plus KVM for a reasonable run time.
+# OVMF, sfdisk, jq, blkid, and mtools, plus KVM for a reasonable run time.
 #
 #   scripts/test-install.sh /path/to/lukearch-x86_64.iso
 set -euo pipefail
@@ -28,7 +28,7 @@ if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
   exit 1
 fi
 
-for cmd in qemu-system-x86_64 qemu-img bsdtar blkid mcopy mmd mdir; do
+for cmd in qemu-system-x86_64 qemu-img sfdisk jq dd blkid mcopy mmd mdir; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1
@@ -77,7 +77,6 @@ trap cleanup EXIT
 mkdir -p "$LOG_DIR"
 cp "${OVMF_CODE/CODE/VARS}" "$work/vars.fd"
 qemu-img create -f qcow2 "$work/disk.qcow2" "$DISK_SIZE" >/dev/null
-bsdtar -xf "$ISO_PATH" -C "$work" arch/boot/x86_64/vmlinuz-linux arch/boot/x86_64/initramfs-linux.img
 
 QEMU=(
   qemu-system-x86_64 -machine q35 "${ACCEL[@]}" -m "$MEMORY_MB" -smp "$CPUS"
@@ -93,26 +92,26 @@ QEMU=(
 # kernel. The test copies that image, replaces its boot entry with one that adds
 # the serial console and systemd.run=, and boots that copy first (bootindex=0).
 # The guest script reaches the guest through fw_cfg.
-# The EFI system image is an .img file in the ISO with systemd-boot at
-# EFI/BOOT/BOOTX64.EFI. Its name depends on the archiso version, so find it by
-# its contents.
-efi_name=""
-while IFS= read -r candidate; do
-  bsdtar -xf "$ISO_PATH" -C "$work" "$candidate" 2>/dev/null || continue
-  if mdir -i "$work/$candidate" ::/EFI/BOOT/BOOTX64.EFI >/dev/null 2>&1; then
-    efi_name="$candidate"
-    break
-  fi
-  rm -f "$work/$candidate"
-done < <(bsdtar -tf "$ISO_PATH" | grep -i -E '\.img$')
-if [[ -z "$efi_name" ]]; then
-  echo "The ISO has no EFI system image with EFI/BOOT/BOOTX64.EFI. Its .img files:" >&2
-  bsdtar -tf "$ISO_PATH" | grep -i -E '\.img$' >&2 || echo "(none)" >&2
+# archiso writes its EFI system image as a partition of the ISO, not as a file in
+# it. Copy that partition out, using the partition table. MBR type ef and GPT
+# type C12A7328 both mean an EFI system partition.
+esp_part="$(sfdisk --json "$ISO_PATH" | jq -r '.partitiontable.partitions[]
+  | select(((.type // "") | ascii_downcase) == "ef" or ((.type // "") | ascii_downcase) == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b")
+  | "\(.start) \(.size)"' | head -n1)"
+if [[ -z "$esp_part" ]]; then
+  echo "The ISO has no EFI system partition. Its partition table:" >&2
+  sfdisk --list "$ISO_PATH" >&2 || true
   exit 1
 fi
-efi_img="$work/$efi_name"
+read -r esp_start esp_size <<<"$esp_part"
+efi_img="$work/efi.img"
+dd if="$ISO_PATH" of="$efi_img" bs=512 skip="$esp_start" count="$esp_size" status=none
+if ! mdir -i "$efi_img" ::/EFI/BOOT/BOOTX64.EFI >/dev/null 2>&1; then
+  echo "The ISO's EFI system partition has no EFI/BOOT/BOOTX64.EFI." >&2
+  exit 1
+fi
 if ! mdir -i "$efi_img" ::/arch/boot/x86_64/vmlinuz-linux >/dev/null 2>&1; then
-  echo "The EFI system image has no live kernel: $efi_name" >&2
+  echo "The EFI system partition has no live kernel." >&2
   exit 1
 fi
 
