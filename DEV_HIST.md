@@ -124,6 +124,15 @@ host's mirrorlist.
   lazily after a second `sync`, so the install is not failed for a busy mount
   alone. The unmount logic was tested on tmpfs mounts, normal and busy, but not
   the lazy fallback, which needs a kernel-level holder.
+- **CI run 14 (commit `1be1ff1`): install test passed.** Stage 1 installed the
+  live ISO's packages onto a blank 24 GB virtual disk with the recommended
+  settings, and the guest checked the installed mirrorlist, keyring, and boot
+  entry. Stage 2 booted the installed disk with no ISO attached and reached
+  SDDM and a login prompt. This is the first time the x86_64 installer has
+  completed in CI. Not confirmed: whether the lazy fallback ran. The message
+  is in the serial log artifact, which was not downloaded. Not tested: btrfs,
+  LUKS, existing-partitions mode, the desktop launcher, and a login to the
+  installed desktop.
 
 ## 2026-10-12
 
