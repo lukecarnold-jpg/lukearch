@@ -101,6 +101,13 @@ host's mirrorlist.
   The guest also discarded the installer's exit status. The guest now reports
   the status, and the host prints the installer's whole output (without the
   package list) when stage 1 fails.
+- **CI run 11 (commit `d2ff035`).** The installer got through packages,
+  configuration, and passwords. Then `umount: /mnt: target is busy` made it exit
+  with status 32, so the install was reported as failed. A process still running
+  inside the target (gpg-agent, started by the keyring and initramfs steps in the
+  chroot) kept /mnt busy. Before unmounting, the installer now stops every
+  process whose root is in the target, with SIGTERM and a one-second wait. The
+  stop step was tested against a process in a test chroot.
 
 ## 2026-10-12
 

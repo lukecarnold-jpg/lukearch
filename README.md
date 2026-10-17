@@ -288,6 +288,8 @@ Limitations:
 
 - UEFI firmware only. BIOS systems are not supported.
 - Secure Boot is not configured.
+- Before unmounting the new system, the installer stops the processes still
+  running inside it (such as gpg-agent), so the target can be unmounted.
 - The installer does not resize existing partitions. Use existing partitions
   mode with unused space that you have already prepared.
 - The installer does not set up RAID, LVM, or swap partitions.

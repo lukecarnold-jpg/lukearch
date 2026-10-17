@@ -873,8 +873,27 @@ save_settings_to_target() {
   chmod 0600 "$TARGET/root/lukearch-install.conf"
 }
 
+# Stops the processes still running inside the target, such as gpg-agent,
+# which pacman-key and mkinitcpio start in the chroot. Those keep /mnt busy.
+# A process is inside the target when its root link points there.
+stop_target_processes() {
+  local root link pid
+  for root in /proc/[0-9]*/root; do
+    link="$(readlink "$root" 2>/dev/null || true)"
+    case "$link" in
+      "$TARGET"|"$TARGET"/*)
+        pid="${root#/proc/}"
+        pid="${pid%/root}"
+        kill -TERM "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+  sleep 1
+}
+
 finish_install() {
   sync
+  stop_target_processes
   umount -R "$TARGET"
   if [[ "$ENCRYPT" == "yes" ]]; then
     cryptsetup close cryptroot
