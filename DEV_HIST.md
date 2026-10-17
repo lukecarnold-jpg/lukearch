@@ -59,6 +59,12 @@ host's mirrorlist.
   `systemd.run=` and the serial console, and boots that copy first
   (`bootindex=0`). The changed boot entry was checked on a synthetic FAT image,
   and the test has not yet run in CI.
+- **CI run 6 (commit `949746e`).** The ISO built. The install test stopped
+  before QEMU started: the script looked for a file named `efiboot.img`, and this
+  archiso version's image has another name. The script now finds the image by
+  its contents, an `.img` file in the ISO that has `EFI/BOOT/BOOTX64.EFI`, and
+  prints the ISO's `.img` files if none matches. The discovery was checked on a
+  fake ISO.
 - **x86_64 build broke on a renamed package.** The first CI run of this branch
   failed in pacstrap with `target not found: plasma-x11-session`: the package
   is no longer in the Arch repositories. The x86_64 package lists no longer

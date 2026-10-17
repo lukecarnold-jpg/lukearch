@@ -93,12 +93,23 @@ QEMU=(
 # kernel. The test copies that image, replaces its boot entry with one that adds
 # the serial console and systemd.run=, and boots that copy first (bootindex=0).
 # The guest script reaches the guest through fw_cfg.
-efi_name="$(bsdtar -tf "$ISO_PATH" | grep -m1 -E '(^|/)efiboot\.img$' || true)"
+# The EFI system image is an .img file in the ISO with systemd-boot at
+# EFI/BOOT/BOOTX64.EFI. Its name depends on the archiso version, so find it by
+# its contents.
+efi_name=""
+while IFS= read -r candidate; do
+  bsdtar -xf "$ISO_PATH" -C "$work" "$candidate" 2>/dev/null || continue
+  if mdir -i "$work/$candidate" ::/EFI/BOOT/BOOTX64.EFI >/dev/null 2>&1; then
+    efi_name="$candidate"
+    break
+  fi
+  rm -f "$work/$candidate"
+done < <(bsdtar -tf "$ISO_PATH" | grep -i -E '\.img$')
 if [[ -z "$efi_name" ]]; then
-  echo "The ISO has no EFI system image (efiboot.img)." >&2
+  echo "The ISO has no EFI system image with EFI/BOOT/BOOTX64.EFI. Its .img files:" >&2
+  bsdtar -tf "$ISO_PATH" | grep -i -E '\.img$' >&2 || echo "(none)" >&2
   exit 1
 fi
-bsdtar -xf "$ISO_PATH" -C "$work" "$efi_name"
 efi_img="$work/$efi_name"
 if ! mdir -i "$efi_img" ::/arch/boot/x86_64/vmlinuz-linux >/dev/null 2>&1; then
   echo "The EFI system image has no live kernel: $efi_name" >&2

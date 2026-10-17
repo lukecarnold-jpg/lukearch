@@ -414,7 +414,8 @@ PCs. Set `FIRMWARE=bios` to test the syslinux BIOS path instead. Pass extra QEMU
 options with `QEMU_EXTRA_ARGS`, for example `QEMU_EXTRA_ARGS="-display none"`.
 
 `scripts/test-install.sh` tests the installer from a booted live ISO. It boots
-the ISO's own EFI image in QEMU with UEFI, installs onto a blank 24 GB virtual
+the ISO's own EFI system image in QEMU with UEFI (found by its contents, so it
+works across archiso versions), installs onto a blank 24 GB virtual
 disk with the recommended settings, then boots the installed disk and waits for
 SDDM and a login prompt. It needs `qemu-system-x86`, `qemu-img`, `ovmf`,
 `libarchive` (`bsdtar`), `mtools`, and KVM for a reasonable run time:
