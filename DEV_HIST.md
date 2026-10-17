@@ -115,6 +115,15 @@ host's mirrorlist.
   open file, stops them with SIGTERM and then SIGKILL, and leaves the target
   itself first. If the unmount still fails, it prints what is using the target.
   All three kinds of holder were tested in a test chroot.
+- **CI run 13 (commit `fcec3f0`).** Still `target is busy`, and the new
+  diagnostics printed no process using the target. So the kernel still holds
+  the mount, and no process in the installer's view is responsible. The
+  candidates include systemd-homed, which started during password setup. The
+  installer now unmounts in a retry loop, stopping processes between tries. If
+  the mount is still busy, it prints the mount tree and detaches the mount
+  lazily after a second `sync`, so the install is not failed for a busy mount
+  alone. The unmount logic was tested on tmpfs mounts, normal and busy, but not
+  the lazy fallback, which needs a kernel-level holder.
 
 ## 2026-10-12
 

@@ -915,15 +915,28 @@ report_target_users() {
   done
 }
 
-finish_install() {
+# Unmounts the target. The first tries stop the processes that use it and retry.
+# If the kernel still reports it busy with no process to blame, the data is
+# already synced, so the mount is detached lazily and the reason is printed.
+unmount_target() {
   sync
-  # Leave the target, so this shell's working directory does not keep it busy.
   cd /
-  stop_target_processes
-  if ! umount -R "$TARGET"; then
-    report_target_users
-    fail "$TARGET is still in use, so the installed system could not be unmounted"
-  fi
+  for _ in 1 2 3; do
+    if umount -R "$TARGET" 2>/dev/null; then
+      return 0
+    fi
+    stop_target_processes
+    sleep 2
+  done
+  report_target_users
+  findmnt -R "$TARGET" >&2 || true
+  log "$TARGET is still busy with no process using it; detaching it. The data is synced."
+  umount -R -l "$TARGET" || return 1
+  sync
+}
+
+finish_install() {
+  unmount_target || fail "$TARGET could not be unmounted, so the installed system is incomplete"
   if [[ "$ENCRYPT" == "yes" ]]; then
     cryptsetup close cryptroot
   fi
